@@ -7,71 +7,121 @@ LazyBridge 是一個強大的連通工具，能夠將 Discord 訊息與 VS Code 
 
 ---
 
-## 🛠️ 事前準備
+## 📁 專案結構
 
-在開始之前，請確保您的環境已具備以下條件：
+```
+LazyBridge/
+├── main.py                    # 入口點（載入 → 註冊模組 → 啟動）
+├── config.json                # Bot Token 等設定
+├── config.example.json        # 設定範本
+├── .env                       # 環境變數（APIFY_TOKEN 等）
+├── requirements.txt           # Python 依賴
+├── .gitignore
+├── README.md
+│
+├── core/                      # 核心基礎設施
+│   ├── config.py              #   設定載入、日誌、常數管理
+│   └── cdp.py                 #   CDP 連線、分頁掃描、JS 注入
+│
+├── bot/                       # Discord Bot 模組
+│   ├── commands.py            #   所有斜線指令（Cog）
+│   ├── events.py              #   事件處理：on_ready、自動轉傳
+│   └── scheduler.py           #   每日晨報排程（Cog）
+│
+├── services/                  # 外部服務整合
+│   ├── google_workspace.py    #   Gmail / Calendar CLI 封裝
+│   ├── apify_news.py          #   Apify 趨勢新聞抓取
+│   └── briefing.py            #   晨報組裝（GWS + Apify）
+│
+└── scripts/                   # 獨立工具腳本
+    └── diagnose.py            #   環境診斷工具
+```
+
+---
+
+## 🛠️ 事前準備
 
 ### 1. Python 環境
 
 - 安裝 Python 3.8 或更高版本。
-- 安裝必要的依賴套件：
+- 安裝依賴套件：
 
   ```bash
-  pip install discord.py requests websockets
+  pip install -r requirements.txt
   ```
 
-### 2. Discord Bot 配置
+### 2. Google Workspace CLI (gws)
+
+本專案整合了 Google 官方的 `gws` 工具來操作 Gmail 與 Google Calendar。
+
+1. **安裝 gws：**
+
+   ```bash
+   npm install -g @googleworkspace/cli
+   ```
+
+2. **設定憑證：**
+
+   - 執行 `gws auth setup` 並依照指示在 Google Cloud 建立專案。
+   - 執行 `gws auth login` 完成帳號授權。
+   - 執行 `gws drive files list` 確保連線正常。
+
+### 3. Apify API (新聞趨勢分析)
+
+本專案使用 Apify 的 `google-search-scraper` 來獲取即時新聞。
+
+- 至 [Apify 官網](https://apify.com/) 註冊並取得 API Token。
+- 在 `.env` 中寫入：
+
+  ```env
+  APIFY_TOKEN=您的_APIFY_API_TOKEN
+  ```
+
+### 4. Discord Bot 配置
 
 1. 前往 [Discord Developer Portal](https://discord.com/developers/applications)。
-2. 建立一個新的 Application，並在 **Bot** 選項中取得您的 `bot_token`。
-3. **重要**：在 **Privileged Gateway Intents** 區域，開啟以下項目：
+2. 建立 Application，在 **Bot** 選項中取得 `bot_token`。
+3. **重要**：開啟所有 **Privileged Gateway Intents**：
    - `PRESENCE INTENT`
    - `SERVER MEMBERS INTENT`
-   - `MESSAGE CONTENT INTENT` (必須開啟，否則無法讀取詳細訊息)
-4. 將機器人邀請至您的伺服器（需具備「發送訊息」、「嵌入連結」、「使用斜線指令」等權限）。
+   - `MESSAGE CONTENT INTENT`
+4. 將機器人邀請至伺服器（需「發送訊息」、「嵌入連結」等權限）。
 
-### 3. 開啟遠端除錯 (Remote Debugging)
+### 5. 開啟遠端除錯 (Remote Debugging)
 
-橋樑需要透過 Chrome DevTools Protocol (CDP) 與 AI 介面溝通：
+橋樑透過 Chrome DevTools Protocol (CDP) 與 AI 介面溝通：
 
-- **VS Code 使用者**：確保您的 VS Code 或是 Antigravity 擴充功能是以開啟 `--remote-debugging-port=9222` 的模式執行。
-- **網頁版使用者**：啟動 Chrome 時加入參數：
+- **VS Code 使用者**：確保以 `--remote-debugging-port=9222` 啟動。
+- **網頁版使用者**：
 
   ```bash
   chrome.exe --remote-debugging-port=9222
   ```
 
-### 4. MCP Server 設定 (給 Antigravity AI)
+### 6. MCP Server 設定 (Antigravity AI)
 
-為了讓 AI 能夠回覆訊息，您必須在 Antigravity 的 MCP 設定中加入 `discord-sender`：
+在 Antigravity 的 MCP 設定中加入 `discord-sender`：
 
-1. 開啟 Antigravity 的 **MCP 設定** (通常在側邊欄齒輪圖示)。
-2. 新增一個 MCP Server 並填入以下資訊 (範例)：
+```json
+{
+  "mcpServers": {
+    "discord-sender": {
+      "command": "npx",
+      "args": ["-y", "@erwin6660/mcp-discord-sender"],
+      "env": {
+        "DISCORD_BOT_TOKEN": "您的_BOT_TOKEN"
+      }
+    }
+  }
+}
+```
 
-   ```json
-   {
-     "mcpServers": {
-       "discord-sender": {
-         "command": "npx",
-         "args": ["-y", "@erwin6660/mcp-discord-sender"],
-         "env": {
-           "DISCORD_BOT_TOKEN": "您的_BOT_TOKEN"
-         }
-       }
-     }
-   }
-   ```
-
-3. **重要：開啟自動執行 (Auto-run/SafeToAutoRun)**：
-   - 為了讓流程全自動化而不需 AI 每次詢問「我是否可以發送訊息？」，請在 Antigravity 的設定中尋找 **Safe to auto-run** 或 **Auto-approve tools**。
-   - 將 `discord-sender` 的相關工具 (如 `send_message`) 加入**白名單**，或在提示詞中強調使用 `SafeToAutoRun: true`。
-   - 在 `main.py` 的指令中，我們已加入 `[INSTRUCTION: YOU MUST REPLY IMMEDIATELY...]` 強制 AI 立即回覆。
+> [!IMPORTANT]
+> 請在 Antigravity 設定中將 `discord-sender` 工具加入 **Auto-run 白名單**，讓 AI 能直接回覆而不需每次詢問。
 
 ---
 
 ## ⚙️ 設定檔 (config.json)
-
-在專案目錄下建立 `config.json` 檔案：
 
 ```json
 {
@@ -84,14 +134,14 @@ LazyBridge 是一個強大的連通工具，能夠將 Discord 訊息與 VS Code 
 
 ## 🚀 啟動方式
 
-1. 確保已開啟具備 Antigravity 的分頁 or VS Code 面板。
-2. 執行 `main.py`：
+1. 確保 Antigravity 面板或 VS Code 已開啟。
+2. 執行：
 
    ```bash
    python main.py
    ```
 
-3. 當看到 `✅ 橋樑啟動成功！（雙向模式）` 時，代表已進入監聽狀態。
+3. 看到 `✅ 橋樑啟動成功！（雙向模式）` 即代表已進入監聽狀態。
 
 ---
 
@@ -99,30 +149,62 @@ LazyBridge 是一個強大的連通工具，能夠將 Discord 訊息與 VS Code 
 
 ### 🔹 自動轉傳 (Auto-Relay)
 
-在 Discord 頻道中輸入任何**非 `/` 開頭**的文字（例如：`怎麼用 Python 讀取 JSON？`），機器人會自動將訊息轉傳給 Antigravity AI，並回覆「📡 接收並傳送中...」。
+在 Discord 輸入**非 `/` 開頭**的文字，機器人會自動轉傳給 Antigravity AI。
 
 ### 🔹 斜線指令
 
-- `/ask <內容>`：明確向 AI 發問。
-- `/tabs`：列出目前瀏覽器/IDE 中所有可連線的分頁。
-- `/dump`：診斷目前的分頁狀態。
-- `/screenshot`：擷取 AI 介面的截圖（診斷 UI 選項用）。
+| 指令 | 說明 |
+|------|------|
+| `/ask <內容>` | 明確向 AI 發問 |
+| `/briefing` | 手動觸發晨報（Gmail + 日曆 + 趨勢新聞） |
+| `/tabs` | 列出瀏覽器/IDE 中所有可連線分頁 |
+| `/dump` | 診斷分頁狀態 |
+| `/screenshot` | 擷取 AI 介面截圖 |
+| `/screen` | 取得螢幕解析度 |
+| `/mouse <x> <y>` | 移動滑鼠 |
+| `/click <x> <y>` | 執行點擊 |
+| `/type <文字>` | 模仿鍵盤輸入 |
 
-### 🔹 互動指令 (診斷用)
+### 🔹 每日晨報排程
 
-- `/screen`：取得遠端機器人的螢幕解析度。
-- `/mouse <x> <y>`：移動滑鼠。
-- `/click <x> <y>`：執行點擊。
-- `/type <文字>`：模仿真人輸入。
+- **觸發時間**：每天上午 **10:30** 自動執行。
+- **報告內容**：
+  - 📧 最新 3 封未讀 Gmail 郵件
+  - ⏰ 今日 Google Calendar 行程
+  - 📌 Apify AI 爬蟲趨勢新聞（3 則）
+- 自動發布至指定 Discord 頻道。
 
 ---
 
-## 📝 運作原理
+## 🔧 診斷工具
 
-1. **Discord 接收端**：監聽 Discord API 傳來的事件。
-2. **CDP 注入層**：透過 WebSocket 連線到 `localhost:9222`，動態尋找 Antigravity 的聊天輸入框。
-3. **JS 動作模擬**：模擬 `Paste` 事件與 `Enter` 鍵入，將訊息強行餵給 AI。
-4. **AI 回信**：此版本的 AI 已配置 MCP (Model Context Protocol) 工具，會直接透過 `discord-sender` 工具回傳訊息到原始頻道。
+若遇到連線問題，可執行環境診斷：
+
+```bash
+python scripts/diagnose.py
+```
+
+將依序檢查：CDP 端口連線 → 分頁列表 → Antigravity 面板 → 輸入框偵測。
+
+---
+
+## 📐 架構說明
+
+```
+Discord 使用者
+     │
+     ▼
+[Discord Bot]  ──(bot/events.py)──  自動轉傳 / 指令解析
+     │
+     ▼
+[CDP 注入層]   ──(core/cdp.py)───  WebSocket → JS 注入
+     │
+     ▼
+[Antigravity AI]
+     │
+     ▼
+[MCP discord-sender]  ──────────  AI 直接回覆至 Discord
+```
 
 ---
 
@@ -130,12 +212,12 @@ LazyBridge 是一個強大的連通工具，能夠將 Discord 訊息與 VS Code 
 
 **Q: 出現「❌ 找不到輸入框」？**
 
-- 請確認 VS Code 中的 Antigravity 面板已經打開，且並未被最小化。
+- 請確認 VS Code 中的 Antigravity 面板已開啟且未被最小化。
 
 **Q: 出現「❌ 取得分頁失敗 (Port 9222)」？**
 
-- 請確認您的瀏覽器或環境是否真的開啟了 `9222` 埠口。可在瀏覽器開啟 `http://127.0.0.1:9222/json` 確認。
+- 請確認瀏覽器或 VS Code 已以 `--remote-debugging-port=9222` 啟動。可訪問 `http://127.0.0.1:9222/json` 確認。
 
 **Q: 訊息傳送成功但 AI 沒有回覆？**
 
-- 請確認 AI 端是否支援 `discord-sender` MCP 工具，或者檢查 AI 是否正在進行複雜處理。
+- 請確認 AI 端已配置 `discord-sender` MCP 工具，或檢查 AI 是否正在進行其他處理。

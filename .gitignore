@@ -1,12 +1,9 @@
 # Sensitive data
 config.json
+.env
 
 # Runtime logs and temp files
 *.log
-log_tail.txt
-diag_output*.txt
-env_out.txt
-inject_out.txt
 bot_log_dump.json
 
 # Python
@@ -19,17 +16,3 @@ __pycache__/
 .idea/
 .DS_Store
 Thumbs.db
-
-# Scratch scripts (Optional - remove if you want to keep them)
-check*.py
-test*.py
-debug*.py
-dump*.py
-diagnose.py
-poc*.py
-env*.py
-inject*.py
-syntax*.py
-a.ps1
-b.ps1
-c.ps1
