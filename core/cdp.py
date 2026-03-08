@@ -95,7 +95,8 @@ async def inject_into_tab(ws, safe_text):
         const okEl = el => {{
             if (!el) return false;
             if (el.closest && el.closest('.monaco-editor')) return false;
-            if (el.classList && el.classList.contains('inputarea')) return false;
+            if (el.closest && (el.closest('.terminal') || el.closest('.xterm'))) return false;
+            if (el.classList && (el.classList.contains('inputarea') || el.classList.contains('xterm-helper-textarea'))) return false;
             const ph = (el.getAttribute ? el.getAttribute('placeholder') : '') || '';
             return !BLACKLIST_PH.some(k => ph.toLowerCase().includes(k.toLowerCase()));
         }};

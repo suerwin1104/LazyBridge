@@ -2,6 +2,7 @@
 Discord Bot 事件處理模組 (Cog)。
 處理 on_ready、on_message、on_command_error 等事件。
 """
+import discord
 from discord.ext import commands
 
 from core.cdp import send_to_antigravity
@@ -19,6 +20,23 @@ class BotEvents(commands.Cog):
         log("✅ 橋樑啟動成功！（雙向模式）")
         log(f"機器人帳號: {self.bot.user}")
         log(f"Message Content Intent: {self.bot.intents.message_content}")
+        
+        # 註冊 Slash Commands
+        try:
+            from core.config import DEFAULT_GUILD_ID
+            guild = discord.Object(id=int(DEFAULT_GUILD_ID))
+            
+            # 將 Cog 中的 command 複製一份到 guild tree (為了立即生效)
+            self.bot.tree.copy_global_to(guild=guild)
+            synced = await self.bot.tree.sync(guild=guild)
+            
+            log(f"🔄 成功同步 {len(synced)} 個 Slash Commands 到伺服器 {DEFAULT_GUILD_ID}")
+            
+            # 同時也進行一次全域同步
+            await self.bot.tree.sync()
+        except Exception as e:
+            log(f"❌ 同步 Slash Commands 失敗: {e}")
+
         log("指令: /ask <訊息> | /dump | /tabs | /screen | /click | /type | /mouse")
         log("等待 Discord 指令中...")
 

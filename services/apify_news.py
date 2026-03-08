@@ -5,6 +5,7 @@ Apify 新聞趨勢抓取模組。
 import time
 
 import requests
+from datetime import datetime
 
 from core.config import get_apify_token
 
@@ -20,10 +21,12 @@ def get_apify_news():
         f"https://api.apify.com/v2/acts/{actor_id.replace('/', '~')}/runs?token={token}"
     )
 
+    today_str = datetime.now().strftime("%Y-%m-%d")
     payload = {
-        "queries": "2026 科技趨勢 產業分析 重大新聞",
+        "queries": f"{today_str} 科技趨勢 產業分析 重大新聞",
         "maxPagesPerQuery": 1,
         "resultsPerPage": 3,
+        "tbs": "qdr:d",  # 過去 24 小時
         "proxyConfiguration": {"useApifyProxy": True},
     }
 

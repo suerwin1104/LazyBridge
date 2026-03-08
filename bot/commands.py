@@ -14,6 +14,7 @@ from discord.ext import commands
 
 from core.cdp import find_chat_tab, get_cdp_tabs, send_to_antigravity
 from core.config import CDP_URL, log
+from core.queue import queue
 from services.briefing import get_briefing
 
 
@@ -25,23 +26,30 @@ class BridgeCommands(commands.Cog):
 
     @commands.command()
     async def ask(self, ctx, *, message):
-        """向 Antigravity AI 發問。"""
-        await ctx.send(
-            f"📡 傳送中：**{message[:50]}{'...' if len(message) > 50 else ''}**"
-        )
-        await send_to_antigravity(
-            message, str(ctx.channel.id), str(ctx.author), ctx=ctx
-        )
+        """向 Antigravity AI 發問 (非同步隊列)。"""
+        payload = {
+            "channel_id": str(ctx.channel.id),
+            "author": str(ctx.author),
+            "message": message
+        }
+        if queue.push_task("ask", payload):
+            await ctx.send(
+                f"📥 **已進入排隊隊列**：{message[:50]}..."
+            )
+        else:
+            await ctx.send("❌ 無法連接任務隊列伺服器 (Redis)，請檢查後端狀態。")
 
     @commands.command()
     async def briefing(self, ctx):
-        """手動觸發晨報任務並發送至當前頻道。"""
-        await ctx.send("⌛ 正在生成晨報（含 Gmail、日曆與新趨勢新聞），請稍候...")
-        try:
-            report = await asyncio.to_thread(get_briefing)
-            await ctx.send(report)
-        except Exception as e:
-            await ctx.send(f"❌ 生成晨報失敗: {e}")
+        """手動觸發晨報任務 (非同步隊列)。"""
+        payload = {
+            "channel_id": str(ctx.channel.id),
+            "params": {"include_emails": True, "include_calendar": True, "include_news": True}
+        }
+        if queue.push_task("briefing", payload):
+            await ctx.send("⌛ **晨報請求已排隊**，完成後會發送至此頻道。")
+        else:
+            await ctx.send("❌ 隊列發送失敗。")
 
     @commands.command()
     async def dump(self, ctx):

@@ -11,6 +11,20 @@ CDP_URL = f"http://127.0.0.1:{CDP_PORT}/json"
 DEFAULT_GUILD_ID = "1209429528632361000"
 BRIEFING_CHANNEL_ID = 1209429529140142104
 BRIEFING_TIME = "10:30"
+SCHEDULER_TASKS_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "scheduler_tasks.json")
+SCHEDULER_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "scheduler_history.sqlite")
+
+# Redis & Queue Config
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+TASK_QUEUE = os.getenv("TASK_QUEUE", "lazybridge_tasks")
+
+# Database Config (Phase 3)
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///scheduler_history.sqlite")
+
+# LLM 憑證 (Phase 2)
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 # --- 設定載入 ---
 _config = None
@@ -27,11 +41,14 @@ def load_config(path="config.json"):
 
 
 def get_bot_token():
-    return load_config()["bot_token"]
+    load_env()
+    # 優先從環境變數讀取，若無則從 config.json 讀取 (相容性)
+    return os.environ.get("DISCORD_BOT_TOKEN") or load_config()["bot_token"]
 
 
 def get_owner_id():
-    return load_config().get("owner_id")
+    load_env()
+    return os.environ.get("OWNER_ID") or str(load_config().get("owner_id", ""))
 
 
 # --- 環境變數 ---
@@ -39,7 +56,7 @@ def load_env():
     """從 .env 檔案載入環境變數（簡易實作，不依賴 python-dotenv）。"""
     env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
     if os.path.exists(env_path):
-        with open(env_path, "r") as f:
+        with open(env_path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:

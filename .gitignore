@@ -2,6 +2,12 @@
 config.json
 .env
 
+# Databases
+*.sqlite
+*.db
+scheduler_tasks.json
+scheduler_history.sqlite
+
 # Runtime logs and temp files
 *.log
 bot_log_dump.json
@@ -9,7 +15,19 @@ bot_log_dump.json
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# Agent & Workspace
+.antigravity/
+.gemini/
+
+# Local scripts
+*.ps1
 
 # IDE and OS
 .vscode/
