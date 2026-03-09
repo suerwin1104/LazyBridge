@@ -1,20 +1,20 @@
-# 🚀 LazyBridge - Antigravity AI 橋接器 (SkyClaw Powered)
+# 🚀 LazyBridge - Antigravity AI 橋接器
 
 > [!NOTE]
-> 本專案基於其強大的系統韌性，已全面整合 **SkyClaw 三層自癒架構**。特別感謝原作者提供核心靈感與 CDP 注入技術。
+> 本專案基於其強大的系統韌性，特別感謝原作者提供核心靈感與 CDP 注入技術。
 
-LazyBridge 是一個生產級的連通工具，能將 Discord 與您的開發環境 (Antigravity AI) 進行雙向串接。它具備高度自動化能力，並由專屬私人秘書 **Mandy** 提供品質審查與主動協作。
+LazyBridge 是一個生產級的連通工具，能將 Discord 與您的開發環境 (Antigravity AI) 進行雙向串接。它具備高度自動化能力。
 
 ---
 
-## 🎭 核心靈魂：Mandy (SOUL.md)
+## 🎭 核心靈魂：私人秘書 (SOUL.md)
 
-本系統不再只是冰冷的機器人，而是由專屬 AI 靈魂 **Mandy** 驅動。
+本系統不再只是冰冷的機器人，而是由專屬 AI 靈魂 **XXX** 驅動。
 
-- **身份**：您的私人秘書兼品質審查員 (Reviewer)。
+- **身份**：您的私人秘書。
 - **特質**：直來直往、行事果決、抱持絕對的支持與忠誠。
 - **動態載入**：系統啟動時自動載入 `SOUL.md`，您隨時可以修改根目錄下的檔案來調整她的性格，無需重啟服務。
-- **願景**：嚴格把關每一行程式碼與系統品質，與使用者一起奔向目標。
+- **願景**：嚴格把關品質，與使用者一起奔向目標。
 
 ---
 
@@ -30,7 +30,7 @@ LazyBridge 採用模組化、異步驅動的架構，確保高可用性與擴展
 
 ### 2. 韌性與安全層 (Resilience & Security)
 
-- **SkyClaw 自癒架構**：
+- **參考 SkyClaw 自癒架構**：
   - **L1: Runtime Resilience**: 具備斷路器 (Circuit Breaker) 保護，防範 API 崩潰。
   - **L2: Task Continuity**: 任務狀態持久化，支援 Worker 重啟後的進度恢復。
   - **L3: Cognitive Correction**: 自動檢測並修正 AI 格式錯誤。
@@ -57,7 +57,7 @@ LazyBridge 採用模組化、異步驅動的架構，確保高可用性與擴展
 LazyBridge/
 ├── main.py                    # 入口點 (啟動 Bot 監聽)
 ├── worker.py                  # 任務執行器 (處理 AI 與 背景任務)
-├── SOUL.md                    # 祕書 Mandy 的性格與行為準則
+├── SOUL.md                    # 祕書的性格與行為準則
 ├── .env                       # 機敏變數 (Token, API Keys)
 ├── core/                      # 基礎模組 (Config, Database, Queue, CDP)
 ├── bot/                       # Discord 介面模組 (Commands, Events)
@@ -89,7 +89,7 @@ LazyBridge/
 | 指令 | 說明 |
 | :--- | :--- |
 | `/ask [內容]` | 呼叫 Mandy 處理您的請求 (非同步模式) |
-| `/present [主題]` | 請 Mandy 為您製作專業簡報 |
+| `/present [主題]` | 為您製作專業簡報 |
 | `/skill-sync [owner/slug]` | 從雲端同步新技能 (例如 `halthelobster/proactive-agent`) |
 | `/briefing` | 產出整合簡報 |
 | `/memory save` | 記錄重要開發決定或踩坑 |
