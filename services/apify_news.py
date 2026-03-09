@@ -10,20 +10,30 @@ from datetime import datetime
 from core.config import get_apify_token
 
 
-def get_apify_news():
-    """透過 Apify Google Search Scraper 抓取趨勢新聞，回傳格式化文字。"""
+def get_apify_news(categories=None):
+    """
+    透過 Apify Google Search Scraper 抓取分類新聞。
+    categories: 字典格式 {"標題1": "搜尋字串1", "標題2": "搜尋字串2"}
+    """
     token = get_apify_token()
     if not token:
         return "\n⚠️ 未設定 Apify Token，無法抓取趨勢新聞。\n"
+
+    if categories is None:
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        categories = {"每日趨勢分析": f"{today_str} 科技趨勢 產業分析 重大新聞"}
 
     actor_id = "apify/google-search-scraper"
     run_url = (
         f"https://api.apify.com/v2/acts/{actor_id.replace('/', '~')}/runs?token={token}"
     )
 
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    # 將多個查詢合併，一行一個
+    queries_list = list(categories.values())
+    queries_str = "\n".join(queries_list)
+
     payload = {
-        "queries": f"{today_str} 科技趨勢 產業分析 重大新聞",
+        "queries": queries_str,
         "maxPagesPerQuery": 1,
         "resultsPerPage": 3,
         "tbs": "qdr:d",  # 過去 24 小時
@@ -57,16 +67,24 @@ def get_apify_news():
         )
         results = requests.get(results_url).json()
 
-        news_list = []
+        all_news_text = []
         if results and isinstance(results, list):
-            organic = results[0].get("organicResults", [])
-            for item in organic[:3]:
-                title = item.get("title")
-                url = item.get("url")
-                news_list.append(f"📌 **{title}**\n🔗 {url}")
+            # 每一個 result 對應一個 query
+            for i, category_title in enumerate(categories.keys()):
+                if i < len(results):
+                    organic = results[i].get("organicResults", [])
+                    category_news = []
+                    for item in organic[:3]:
+                        title = item.get("title")
+                        url = item.get("url")
+                        category_news.append(f"📌 **{title}**\n🔗 {url}")
+                    
+                    if category_news:
+                        all_news_text.append(f"**【{category_title}】**\n" + "\n\n".join(category_news))
 
-        if news_list:
-            return "\n\n**【每日趨勢分析】**\n" + "\n\n".join(news_list)
+        if all_news_text:
+            return "\n\n" + "\n\n".join(all_news_text)
         return "\n今日無可用趨勢分析新聞。\n"
     except Exception as e:
         return f"\n⚠️ 新聞抓取發生錯誤: {str(e)}\n"
+

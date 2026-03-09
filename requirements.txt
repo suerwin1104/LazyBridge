@@ -1,3 +1,9 @@
 discord.py
 requests
 websockets
+sqlalchemy
+asyncpg
+aiosqlite
+redis
+python-dotenv
+pydantic

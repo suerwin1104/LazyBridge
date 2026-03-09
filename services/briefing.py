@@ -28,8 +28,13 @@ def get_briefing(include_emails=True, include_calendar=True, include_news=True):
     # 3. 趨勢新聞
     if include_news:
         print("正在抓取趨勢新聞...")
-        news_text = get_apify_news()
+        categories = {
+            "全球重點科技新聞": f"{today} 全球 重點 科技 新聞",
+            "台灣重點新聞": f"{today} 台灣 重點 新聞"
+        }
+        news_text = get_apify_news(categories=categories)
         report_sections.append(news_text)
+
 
     # 4. 組合報告
     report_sections.append("\n*新聞彙整已由 AI 即時生成並發送至您的 Discord。*")

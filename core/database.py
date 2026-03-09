@@ -10,6 +10,12 @@ from core.config import DATABASE_URL, log
 # 建立 Base Class 供 Models 繼承
 Base = declarative_base()
 
+# 匯入所有 Model，讓 Base.metadata 能註冊到這些表格
+from models.task import ScheduledTask
+from models.history import TaskHistory
+from models.memory import MemoryEntry
+from models.metrics import MetricEntry
+
 # 如果尚未設定 PostgreSQL URL，預設會使用 SQLite 記憶體模式來防呆
 engine_url = DATABASE_URL
 if not engine_url:

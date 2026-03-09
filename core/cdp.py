@@ -19,7 +19,10 @@ def get_cdp_tabs():
     """向 CDP 端口取得所有 page 分頁。"""
     resp = requests.get(CDP_URL, timeout=5)
     resp.raise_for_status()
-    return [t for t in resp.json() if t.get("type") == "page"]
+    tabs = [t for t in resp.json() if t.get("type") == "page"]
+    for t in tabs:
+        log(f"📄 偵測到分頁: [{t.get('title', 'Unknown')}] - {t.get('url', '')[:50]}...")
+    return tabs
 
 
 def find_chat_tab(tabs):
@@ -200,6 +203,7 @@ async def send_to_antigravity(text, channel_id, author_name, ctx=None):
     """
     注入訊息到 Antigravity，並附帶 Discord 上下文。
     AI 應使用 mcp-discord 伺服器的 send_message 工具回覆到對應頻道。
+    Returns True on successful injection, False on failure.
     """
     try:
         try:
@@ -209,14 +213,15 @@ async def send_to_antigravity(text, channel_id, author_name, ctx=None):
             log(msg)
             if ctx:
                 await ctx.send(msg)
-            return
+            return False
 
         chat_tab = find_chat_tab(tabs)
         if not chat_tab:
             msg = "❌ 找不到聊天分頁。"
+            log(msg)
             if ctx:
                 await ctx.send(msg)
-            return
+            return False
 
         log(f"🎯 目標: [{chat_tab.get('title', '')}]")
         target_ws = chat_tab["webSocketDebuggerUrl"]
@@ -242,28 +247,34 @@ async def send_to_antigravity(text, channel_id, author_name, ctx=None):
                 log(f"🤖 注入結果: {method}")
 
                 if method is None:
+                    log("❌ CDP 注入失敗 (回傳 None)")
                     if ctx:
                         await ctx.send("❌ CDP 注入失敗 (回傳 None)")
-                    return
+                    return False
                 if "__NO_INPUT__" in str(method):
+                    log("❌ 找不到輸入框 (請確認 Antigravity 的聊天面板已開啟)")
                     if ctx:
                         await ctx.send("❌ 找不到輸入框 (請確認 Antigravity 的聊天面板已開啟)")
-                    return
+                    return False
 
                 if ctx:
                     await ctx.send("✅ 訊息已送入 Antigravity，請等待 AI 回覆。")
+                return True
         except asyncio.TimeoutError:
             msg = "❌ 連線 WebSocket 超時 (10s)"
             log(msg)
             if ctx:
                 await ctx.send(msg)
+            return False
         except Exception as e:
             msg = f"❌ WebSocket 連線出錯: {e}"
             log(msg)
             if ctx:
                 await ctx.send(msg)
+            return False
     except Exception as e:
         msg = f"❌ 傳送失敗: {e}"
         log(msg)
         if ctx:
             await ctx.send(msg)
+        return False

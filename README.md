@@ -69,18 +69,54 @@ LazyBridge/
 
 ---
 
-## 🛠️ 安裝與啟動 (Setup)
+## 🛠️ 安裝與啟動 (Setup & Installation)
 
-### 1. 準備工作
+為了確保系統穩定運行，請按照以下步驟進行配置：
 
-- Python 3.8+
-- Redis (必備)
-- Chrome 啟動參數：`--remote-debugging-port=9222`
+### 1. 環境需求 (Prerequisites)
 
-### 2. 指令啟動
+- **Python 3.8+**
+- **Redis Server**: 用於任務隊列 (`brew install redis` 或 Docker 執行)。
+- **PostgreSQL** (推薦): 用於生產環境。若無，系統將自動回退至 **SQLite**。
+- **Google Chrome**: 需開啟遠端偵錯模式。
+  - Windows: `chrome.exe --remote-debugging-port=9222`
+  - macOS: `/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222`
 
-1. `python main.py`: 啟動 Discord 機器人。
-2. `python worker.py`: 啟動背景任務執行器。
+### 2. 安裝依賴
+
+```bash
+git clone https://github.com/suerwin1104/LazyBridge.git
+cd LazyBridge
+pip install -r requirements.txt
+```
+
+### 3. 配置環境變數 (.env)
+
+請複製 `.env.example` 並重新命名為 `.env`，填寫以下關鍵資訊：
+
+- `DISCORD_BOT_TOKEN`: 您的 Discord Bot Token。
+- `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`: 至少填寫一個以啟用 AI 功能。
+- `DATABASE_URL`:
+  - PostgreSQL: `postgresql+asyncpg://user:password@localhost:5432/lazybridge`
+  - SQLite: `sqlite+aiosqlite:///scheduler_history.sqlite`
+
+### 4. 資料庫初始化 (Database Setup)
+
+專案使用 SQLAlchemy (Async) 進行管理。啟動前請執行初始化腳本來建立必要的資料表：
+
+```bash
+python scripts/init_postgres.py
+```
+
+> [!TIP]
+> 此指令會根據 `.env` 中的 `DATABASE_URL` 自動建立 `task_trace`, `scheduled_tasks`, `memory_entries` 等表格。
+
+### 5. 啟動服務
+
+建議開啟兩個終端機分別執行：
+
+1. **啟動 Bot 監聽**: `python main.py`
+2. **啟動任務執行器**: `python worker.py`
 
 ---
 

@@ -17,6 +17,7 @@ async def main():
     await bot.load_extension("bot.commands")
     await bot.load_extension("bot.events")
     await bot.load_extension("bot.scheduler")
+    await bot.load_extension("bot.memory_cog")
 
     log("🚀 正在啟動 LazyBridge...")
     await bot.start(get_bot_token())
