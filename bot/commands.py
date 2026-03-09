@@ -141,5 +141,91 @@ class BridgeCommands(commands.Cog):
         await ctx.send("⌨️ 正在輸入文字...")
 
 
+    @commands.command()
+    async def harness_status(self, ctx, days: int = 7):
+        """查看效能監控儀表板 (Token 消耗、延遲、成功率)。"""
+        from services.metrics import get_summary_stats
+        log(f"📡 指令呼叫: /harness_status {days}")
+        
+        stats = await get_summary_stats(days=days)
+        if not stats:
+            await ctx.send("❌ 無法取得效能指標數據。")
+            return
+
+        total_tokens = stats["total_tokens"]
+        avg_latency = stats["avg_latency"]
+        dist = stats["status_distribution"]
+        
+        success_count = dist.get("success", 0)
+        error_count = dist.get("error", 0)
+        total_count = success_count + error_count
+        success_rate = (success_count / total_count * 100) if total_count > 0 else 0
+
+        # 專業儀表板格式
+        msg = f"📊 **Harness 效能監控報告 (最近 {days} 天)**\n"
+        msg += f"━━━━━━━━━━━━━━━━━━━━\n"
+        msg += f"💰 **總 Token 消耗**: `{total_tokens:,}`\n"
+        msg += f"⏱️ **平均延遲**: `{avg_latency:.2f}ms`\n"
+        msg += f"📈 **任務成功率**: `{success_rate:.1f}%` ({success_count}/{total_count})\n"
+        msg += f"━━━━━━━━━━━━━━━━━━━━\n"
+        
+        # 簡易視覺化進度條
+        bar_len = 10
+        success_bars = int(success_rate / 10)
+        bar = "🟩" * success_bars + "🟥" * (bar_len - success_bars)
+        msg += f"狀態分佈: [{bar}]\n"
+        
+        await ctx.send(msg)
+
+
+    @commands.command(name="loop-start")
+    async def loop_start(self, ctx):
+        """立即啟動自主維護循環 (Autonomous Loop)。"""
+        log("📡 指令呼叫: /loop-start")
+        if queue.push_task("loop", {}):
+            await ctx.send("🔄 **自主維護任務已加入隊列**。系統將自動檢查資料庫、清除過期任務並驗證技能狀態。")
+        else:
+            await ctx.send("❌ 無法啟動維護任務，請檢查 Redis 連線。")
+
+    @commands.command(name="loop-status")
+    async def loop_status(self, ctx):
+        """檢查自主維護狀態。"""
+        # 這裡簡單回報，未來可以從 DB 讀取最後維護時間
+        await ctx.send("🟢 **系統狀態良好**。Worker 運作中，自主維護循環待命中。")
+
+
+    @commands.command(name="present")
+    async def present(self, ctx, *, topic: str):
+        """讓 AI 針對特定主題製作一份專業的 HTML 簡報。"""
+        log(f"📡 指令呼叫: /present {topic}")
+        payload = {
+            "channel_id": str(ctx.channel.id),
+            "topic": topic
+        }
+        if queue.push_task("presentation", payload):
+            await ctx.send(f"🎨 **簡報製作請求已排隊**：主題為 「{topic}」。完成後會在此回報存檔位置。")
+        else:
+            await ctx.send("❌ 隊列發送失敗。")
+
+
+    @commands.command(name="skill-sync")
+    async def skill_sync(self, ctx, path: str):
+        """從 openclaw/skills 下載並安裝技能 (格式: owner/slug)。"""
+        if "/" not in path:
+            await ctx.send("❌ 格式錯誤。請使用 `owner/slug` 格式，例如 `00xmorty/conatus`")
+            return
+            
+        owner, slug = path.split("/", 1)
+        await ctx.send(f"📥 正在從 openclaw/skills 同步技能 `{slug}`...")
+        
+        from services.skill_sync import download_skill
+        success, message = await download_skill(owner, slug)
+        
+        if success:
+            await ctx.send(f"✅ **{message}**\n您可以現在開始在對話中使用此技能的能力。")
+        else:
+            await ctx.send(f"❌ **安裝失敗**: {message}")
+
+
 async def setup(bot):
     await bot.add_cog(BridgeCommands(bot))

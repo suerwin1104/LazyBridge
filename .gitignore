@@ -25,6 +25,9 @@ venv/
 # Agent & Workspace
 .antigravity/
 .gemini/
+workspace/
+skills/
+tmp/
 
 # Local scripts
 *.ps1
