@@ -88,7 +88,7 @@ LazyBridge/
 
 | 指令 | 說明 |
 | :--- | :--- |
-| `/ask [內容]` | 呼叫 Mandy 處理您的請求 (非同步模式) |
+| `/ask [內容]` | 處理您的請求 (非同步模式) |
 | `/present [主題]` | 為您製作專業簡報 |
 | `/skill-sync [owner/slug]` | 從雲端同步新技能 (例如 `halthelobster/proactive-agent`) |
 | `/briefing` | 產出整合簡報 |
