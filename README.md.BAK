@@ -199,13 +199,13 @@ docker-compose up -d --build
 
 預設情況下，報表只允許在執行機器人本機 (`localhost`) 瀏覽。如果您希望在外網 (例如手機 4G) 或其他裝置上觀看，請在 `.env` 中設定 `REPORTS_BASE_URL`：
 
-##### 選項 1：使用 Tailscale (目前採用本方案, 推薦, 高安全性)
+##### 選項 1：使用 Tailscale (推薦, 高安全性)
 
 如果您與機器人裝置皆登入 Tailscale，可直接使用分配的虛擬 IP：
 
 ```env
 # .env 檔案設定範例
-REPORTS_BASE_URL=http://<YOUR_TAILSCALE_IP>:8080
+REPORTS_BASE_URL=http://100.110.201.24:8080
 ```
 
 ##### 選項 2：區域網路 (LAN) 存取
@@ -222,11 +222,9 @@ REPORTS_BASE_URL=http://192.168.1.100:8080
 REPORTS_BASE_URL=https://lazy-bridge-report.loca.lt
 ```
 
-#### 選項 4：進階動態連結中心 (Dynamic Link Hub - 目前暫停使用)
+#### 選項 4：進階動態連結中心 (Dynamic Link Hub - 免費固定網址)
 
-這是之前使用的進階解決方案，目前專案已暫停 Cloudflare 隧道，改為全面使用 Tailscale (選項 1)。以下資訊僅供備查。
-
-使用 Cloudflare Workers 作為固定入口，並透過同步腳本自動更新隨機網址。即使本地隧道（localtunnel）重啟，對外的網址也永遠固定不變。
+這是目前最專業的解決方案。使用 Cloudflare Workers 作為固定入口，並透過同步腳本自動更新隨機網址。即使本地隧道（localtunnel）重啟，對外的網址也永遠固定不變。
 
 ##### 1. 單一服務同步模式
 

@@ -1,0 +1,61 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>LazyBridge Project Overview</title>
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #0f172a; color: #f8fafc; margin: 0; display: flex; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
+        .slide { background: #1e293b; border-radius: 12px; padding: 40px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); max-width: 800px; width: 90%; text-align: left; opacity: 0; transform: translateY(20px); transition: all 0.5s ease; position: absolute; }
+        .slide.active { opacity: 1; transform: translateY(0); z-index: 10; }
+        h1 { color: #38bdf8; font-size: 2.5rem; margin-bottom: 20px; }
+        p { line-height: 1.6; font-size: 1.2rem; }
+        .nav { position: fixed; bottom: 20px; display: flex; gap: 10px; }
+        button { background: #334155; border: none; color: white; padding: 10px 20px; border-radius: 6px; cursor: pointer; transition: background 0.3s; }
+        button:hover { background: #475569; }
+    </style>
+</head>
+<body>
+    
+        <div class="slide active">
+            <h1>Introduction</h1>
+            <p>LazyBridge is an autonomous agent harness powered by ECC logic.<br>It integrates Discord, AI models, and local tools.</p>
+        </div>
+        
+        <div class="slide ">
+            <h1>Core Features</h1>
+            <p>- Harness Metrics (Observability)<br>- Autonomous Loop (Self-Audit)<br>- NanoClaw Compaction (Long-term Memory)</p>
+        </div>
+        
+        <div class="slide ">
+            <h1>AgentShield</h1>
+            <p>Security layer providing command sanitization and data protection.</p>
+        </div>
+        
+        <div class="slide ">
+            <h1>Future Roadmap</h1>
+            <p>Expanding into multi-agent collaboration and advanced UI reporting.</p>
+        </div>
+        
+    <div class="nav">
+        <button onclick="prevSlide()">Prev</button>
+        <button onclick="nextSlide()">Next</button>
+    </div>
+    <script>
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.slide');
+        function showSlide(n) {
+            slides[currentSlide].classList.remove('active');
+            currentSlide = (n + slides.length) % slides.length;
+            slides[currentSlide].classList.add('active');
+        }
+        function nextSlide() { showSlide(currentSlide + 1); }
+        function prevSlide() { showSlide(currentSlide - 1); }
+        showSlide(0);
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight') nextSlide();
+            if (e.key === 'ArrowLeft') prevSlide();
+        });
+    </script>
+</body>
+</html>

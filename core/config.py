@@ -48,6 +48,9 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 # Toonify Config (Phase 4)
 TOONIFY_ENABLED = os.environ.get("TOONIFY_ENABLED", "true").lower() == "true"
 
+# Reports Server Config
+REPORTS_BASE_URL = os.getenv("REPORTS_BASE_URL", "http://localhost:8080")
+
 
 # --- 設定載入 ---
 _config = None

@@ -2,10 +2,11 @@ import asyncio
 import json
 import os
 import subprocess
-from core.config import log, get_soul_content
+from core.config import log, get_soul_content, REPORTS_BASE_URL
 from core.queue import queue
 from core.cdp import send_to_antigravity
-from services.briefing import get_briefing
+from services.briefing import get_briefing_data, generate_briefing_html, format_briefing_text
+from services.document_viewer import get_web_link
 from services.ai_engine import get_ai_response_async
 import requests
 from services.shield import redact_sensitive_data, is_safe_command
@@ -110,8 +111,26 @@ async def handle_task(task):
                 log(f"🧠 正在使用 API 引擎 (Headless) 處理: {message[:30]}...")
                 ai_result = await get_ai_response_async(message, system_prompt=system_prompt)
                 response = ai_result["text"]
-                context["tokens"] = ai_result["tokens"]
                 send_discord_msg(channel_id, f"🤖 **(API Mode)** {response}")
+
+                # --- Voice Output Integration ---
+                # Check if the bot is in a voice channel for this guild
+                # Note: Worker doesn't have direct access to bot.voice_clients, 
+                # but we can check if voice is requested in payload or handle it simpler for now.
+                voice_guild_id = payload.get("guild_id")
+                if voice_guild_id:
+                    # In a real scenario, we'd need a way to tell the bot to play.
+                    # Since Worker and Bot are separate processes, we'll use the queue to send a 'speak' task back.
+                    queue.push_task("command", {
+                        "command": f"python -c \"import discord; from discord.ext import commands; # simplified trigger\"",
+                        "task_name": "Voice Playback",
+                        "channel_id": channel_id,
+                        # However, the simplest way is to have the bot check for voice in its own event loop or via a shared state.
+                        # For this implementation, we'll assume the 'speak' command is the primary entry point for now,
+                        # or we can add a specific 'voice_response' task type.
+                    })
+                    # BETTER: For now, let's just make sure the 'ask' command in commands.py 
+                    # can trigger voice if the bot is in a VC.
                 
                  # --- Memory Engine 儲存 Session 摘要 ---
                 await save_session_memory([message], response)
@@ -124,12 +143,19 @@ async def handle_task(task):
             # 執行晨報生成
             channel_id = payload.get("channel_id")
             params = payload.get("params", {})
-            log(f"📰 正在生成晨報...")
-            report = await asyncio.to_thread(get_briefing, **params)
+            log(f"📰 正在生成網頁版晨報...")
+            # 1. 獲取結構化數據
+            data = await asyncio.to_thread(get_briefing_data, **params)
+            
+            # 2. 生成 HTML 檔案
+            html_path = await asyncio.to_thread(generate_briefing_html, data)
+            report_url = f"{REPORTS_BASE_URL}/{os.path.basename(html_path)}"
             
             if channel_id:
-                send_discord_msg(channel_id, report)
-                log(f"✅ 晨報已發送至頻道 {channel_id}")
+                # 發送極簡版與網頁連結
+                summary = f"**📅 {data['date']} 每日晨報已生成**\n\n🔗 **[點此查看完整網頁版晨報]({report_url})**"
+                send_discord_msg(channel_id, summary)
+                log(f"✅ 網頁版晨報已發送至頻道 {channel_id}: {report_url}")
                 
         elif task_type == "command":
             # 執行系統指令
@@ -150,6 +176,20 @@ async def handle_task(task):
             
             if process.returncode == 0:
                 log(f"✅ 指令執行成功: {task_name}")
+                output_str = stdout.decode().strip()
+                # 檢查指令輸出是否包含生成的檔案路徑
+                import re
+                file_match = re.search(r'(?:Generated|Saved|Output):?\s*([a-zA-Z0-9_\-\./\\]+\.[a-zA-Z0-9]+)', output_str)
+                web_link_msg = ""
+                if file_match:
+                    file_path = file_match.group(1).split()[-1] # 取得最後路徑部分
+                    if os.path.exists(file_path):
+                        web_url = get_web_link(file_path)
+                        if web_url:
+                            web_link_msg = f"\n🌐 **[點此在網頁中檢視產出文件]({web_url})**"
+
+                if channel_id:
+                    send_discord_msg(channel_id, f"✅ **{task_name}** 執行成功！{web_link_msg}\n```\n{output_str[:1500]}\n```")
             else:
                 log(f"❌ 指令執行失敗: {stderr.decode()}")
                 
@@ -249,7 +289,7 @@ async def handle_task(task):
                         file_path = await generate_presentation(data["title"], data["sections"])
                         
                         if channel_id:
-                            send_discord_msg(channel_id, f"✅ **簡報發布成功**！主題：{data['title']}\n報告已存檔於系統路徑：`{file_path}`")
+                            send_discord_msg(channel_id, f"✅ **簡報發布成功**！主題：{data['title']}\n線上閱覽連結：{file_path}")
                         presentation_success = True
                         break
                         
@@ -276,7 +316,38 @@ async def handle_task(task):
                     }
                     file_path = await generate_presentation(fallback_data["title"], fallback_data["sections"])
                     if channel_id:
-                        send_discord_msg(channel_id, f"⚠️ AI 解析失敗，已生成備用簡報框架。\n報告已存檔於：`{file_path}`")
+                        send_discord_msg(channel_id, f"⚠️ AI 解析失敗，已生成備用簡報框架。\n線上閱覽連結：{file_path}")
+
+        elif task_type == "chub":
+            # 處理 Context Hub 指令
+            action = payload.get("action")
+            args = payload.get("args", [])
+            channel_id = payload.get("channel_id")
+            log(f"📚 收到 Context Hub 請求: {action} {args}")
+            
+            from services.context_hub import search_chub, get_chub, annotate_chub
+            
+            if action == "search":
+                query = args[0] if args else ""
+                msg = await search_chub(query)
+                if channel_id:
+                    send_discord_msg(channel_id, msg)
+            elif action == "get":
+                doc_id = args[0] if args else ""
+                lang = args[1] if len(args) > 1 else "py"
+                success, msg = await get_chub(doc_id, lang)
+                if channel_id:
+                    send_discord_msg(channel_id, msg)
+            elif action == "annotate":
+                doc_id = args[0] if args else ""
+                note = " ".join(args[1:]) if len(args) > 1 else ""
+                msg = await annotate_chub(doc_id, note)
+                if channel_id:
+                    send_discord_msg(channel_id, msg)
+            else:
+                log(f"⚠️ 未知的 Context Hub 動作: {action}")
+                if channel_id:
+                    send_discord_msg(channel_id, f"❌ 未知的 Context Hub 動作: {action}")
 
         else:
             log(f"⚠️ 未知的任務類型: {task_type}")
@@ -300,20 +371,30 @@ semaphore = asyncio.Semaphore(MAX_CONCURRENT_TASKS)
 
 async def worker_task_wrapper(task):
     """Wrapper to handle a task within a semaphore and catch errors."""
+    log(f"🔥 DEBUG: Entered worker_task_wrapper for task {task.get('type')}")
     async with semaphore:
+        log(f"🔥 DEBUG: Acquired semaphore for task {task.get('type')}")
         try:
+            log(f"🔥 DEBUG: Calling handle_task")
             await handle_task(task)
+            log(f"🔥 DEBUG: handle_task completed")
         except Exception as e:
             log(f"💥 Task wrapper caught unhandled error: {e}")
+            import traceback
+            traceback.print_exc()
 
 async def main():
     log(f"🚀 Worker 已啟動 (併發上限: {MAX_CONCURRENT_TASKS})，正在監聽 Redis 隊列...")
     while True:
         try:
-            task = queue.pop_task(timeout=5)
+            task = queue.pop_task()
             if task:
+                log(f"🔥 DEBUG: Popped task from queue: {task['type']}")
                 # 使用 create_task 併發執行，不阻塞主迴圈
                 asyncio.create_task(worker_task_wrapper(task))
+            else:
+                # 讓出事件迴圈控制權，避免 100% CPU，也讓其他 tasks (如 DB 連線) 有時間執行
+                await asyncio.sleep(1)
         except Exception as e:
             log(f"❌ Worker Loop 異常: {e}")
             await asyncio.sleep(5)

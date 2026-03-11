@@ -18,6 +18,7 @@ def run_gws(cmd_list):
             shell=True,
             encoding="utf-8",
             errors="replace",
+            timeout=30,
         )
         return json.loads(result.stdout)
     except Exception as e:

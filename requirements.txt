@@ -1,4 +1,5 @@
-discord.py
+discord.py[voice]
+gTTS
 requests
 websockets
 sqlalchemy

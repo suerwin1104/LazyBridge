@@ -33,10 +33,10 @@ class TaskQueue:
             return None
         
         try:
-            # blpop returns (queue_name, data)
-            result = self.redis.blpop(TASK_QUEUE, timeout=timeout)
+            # lpop 是一個非阻塞呼叫，若無資料則直接回傳 None
+            result = self.redis.lpop(TASK_QUEUE)
             if result:
-                return json.loads(result[1])
+                return json.loads(result)
         except Exception as e:
             log(f"Error popping task: {e}")
         return None

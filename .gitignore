@@ -1,6 +1,7 @@
-# Sensitive data
 config.json
 .env
+*.mp3
+*.wav
 
 # Databases
 *.sqlite
@@ -11,6 +12,11 @@ scheduler_history.sqlite
 # Runtime logs and temp files
 *.log
 bot_log_dump.json
+log_tail.txt
+temp_log.txt
+trace.log
+trace2.log
+db_err.log
 
 # Python
 __pycache__/
@@ -31,6 +37,10 @@ tmp/
 
 # Local scripts
 *.ps1
+scripts/test_voice_env.py
+scripts/test_opus.py
+scripts/dump_log.py
+scripts/force_sync.py
 
 # IDE and OS
 .vscode/

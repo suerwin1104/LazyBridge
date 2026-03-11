@@ -23,12 +23,61 @@ class BridgeCommands(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
+        self.voice_clients = {}
+
+    @commands.command()
+    async def join(self, ctx):
+        """讓 Mandy 進入語音頻道。"""
+        if ctx.author.voice:
+            channel = ctx.author.voice.channel
+            vc = ctx.guild.voice_client
+            if vc:
+                if vc.channel.id != channel.id:
+                    await vc.move_to(channel)
+            else:
+                vc = await channel.connect()
+            self.voice_clients[ctx.guild.id] = vc
+            await ctx.send(f"🎙️ **Mandy 已進入頻道**: {channel.name}")
+        else:
+            await ctx.send("❌ 您必須先進入一個語音頻道！")
+
+    @commands.command()
+    async def leave(self, ctx):
+        """讓 Mandy 離開語音頻道。"""
+        vc = ctx.guild.voice_client
+        if vc:
+            await vc.disconnect()
+            if ctx.guild.id in self.voice_clients:
+                del self.voice_clients[ctx.guild.id]
+            await ctx.send("👋 **Mandy 已離開語音頻道**。")
+        else:
+            await ctx.send("❌ 我目前不在任何語音頻道中。")
+
+    @commands.command()
+    async def speak(self, ctx, *, text: str):
+        """讓 Mandy 在語音頻道說話。"""
+        vc = ctx.guild.voice_client
+        if not vc or not vc.is_connected():
+            if ctx.author.voice:
+                channel = ctx.author.voice.channel
+                vc = await channel.connect()
+                self.voice_clients[ctx.guild.id] = vc
+            else:
+                await ctx.send("❌ 請先讓我進入頻道或您先進入頻道。")
+                return
+
+        from services.voice_service import VoiceService
+        filepath = await VoiceService.generate_tts(text)
+        if filepath:
+            await VoiceService.play_voice(vc, filepath)
+            await ctx.send(f"🗣️ **Mandy 說**: {text}")
 
     @commands.command()
     async def ask(self, ctx, *, message):
         """向 Antigravity AI 發問 (非同步隊列)。"""
         payload = {
             "channel_id": str(ctx.channel.id),
+            "guild_id": str(ctx.guild.id) if ctx.guild else None,
             "author": str(ctx.author),
             "message": message
         }
@@ -225,6 +274,39 @@ class BridgeCommands(commands.Cog):
             await ctx.send(f"✅ **{message}**\n您可以現在開始在對話中使用此技能的能力。")
         else:
             await ctx.send(f"❌ **安裝失敗**: {message}")
+
+    @commands.command(name="chub")
+    async def chub(self, ctx, action: str, *, args: str = ""):
+        """Context Hub 工具 (支援 search, get, annotate)"""
+        valid_actions = ["search", "get", "annotate"]
+        if action not in valid_actions:
+            await ctx.send(f"❌ 錯誤的動作: `{action}`。支援的動作有: {', '.join(valid_actions)}")
+            return
+            
+        # 為了支援附帶空白的 args (例如 annotate 的筆記)，這裡做簡單的切割，
+        # 第一個參數通常是 doc_id，後面的就是 note。
+        arg_list = args.split(' ', 1) if args else []
+        if action == "annotate" and len(arg_list) == 2:
+            pass # ["doc_id", "the rest of note..."]
+        else:
+            arg_list = args.split() if args else []
+
+        payload = {
+            "channel_id": str(ctx.channel.id),
+            "action": action,
+            "args": arg_list
+        }
+        
+        log(f"📡 指令呼叫: /chub {action} {args}")
+        if queue.push_task("chub", payload):
+            if action == "search":
+                await ctx.send(f"🔍 正在搜尋 Context Hub: `{args}`...")
+            elif action == "get":
+                await ctx.send(f"📥 正在從 Context Hub 抓取文件: `{args}`...")
+            elif action == "annotate":
+                await ctx.send(f"📝 正在為文件建立註解...")
+        else:
+            await ctx.send("❌ 隊列發送失敗，請檢查 Task Queue (Redis)。")
 
 
 async def setup(bot):

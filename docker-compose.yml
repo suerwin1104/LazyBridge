@@ -1,0 +1,138 @@
+version: '3.8'
+
+
+
+services:
+
+  # Discord Bot ????
+
+  bot:
+
+    build: .
+
+    container_name: lazybridge_bot
+
+    restart: always
+
+    env_file: .env
+
+    environment:
+
+      - REDIS_URL=redis://lazybridge_redis:6379
+
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-hbms_admin}:${POSTGRES_PASSWORD:-hbms_password_2026}@db:5432/${POSTGRES_DB:-hbms_master}
+
+    depends_on:
+
+      - redis
+
+      - db
+
+    volumes:
+
+      - .:/app
+
+    command: python main.py
+
+
+
+  # 任?????(Worker)
+
+  worker:
+
+    build: .
+
+    container_name: lazybridge_worker
+
+    restart: always
+
+    env_file: .env
+
+    environment:
+
+      - REDIS_URL=redis://lazybridge_redis:6379
+
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-hbms_admin}:${POSTGRES_PASSWORD:-hbms_password_2026}@db:5432/${POSTGRES_DB:-hbms_master}
+
+    depends_on:
+
+      - redis
+
+      - db
+
+    volumes:
+
+      - .:/app
+
+    command: python worker.py
+
+
+
+  # Redis 任???
+
+  redis:
+
+    image: redis:7-alpine
+
+    container_name: lazybridge_redis
+
+    ports:
+
+      - "6379:6379"
+
+
+
+  # ???表伺???(?Portless ??使用)
+
+  reports_server:
+
+    image: python:3.10-slim
+
+    container_name: lazybridge_reports
+
+    restart: always
+
+    volumes:
+
+      - ./reports:/reports
+
+    command: python -m http.server 8080 --directory /reports
+
+    ports:
+
+      - "8080:8080"
+
+
+
+  # PostgreSQL 資??
+
+  db:
+
+    image: postgres:15-alpine
+
+    container_name: lazybridge_db
+
+    restart: always
+
+    environment:
+
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+
+      POSTGRES_DB: ${POSTGRES_DB:-lazybridge}
+
+    ports:
+
+      - "5432:5432"
+
+    volumes:
+
+      - postgres_data:/var/lib/postgresql/data
+
+
+
+volumes:
+
+  postgres_data:
+

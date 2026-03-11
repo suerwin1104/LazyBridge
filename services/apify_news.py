@@ -52,7 +52,7 @@ def get_apify_news(categories=None):
         status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={token}"
         for _ in range(12):
             time.sleep(10)
-            status_resp = requests.get(status_url).json()
+            status_resp = requests.get(status_url, timeout=15).json()
             status = status_resp.get("data", {}).get("status")
             if status == "SUCCEEDED":
                 break
@@ -65,7 +65,7 @@ def get_apify_news(categories=None):
         results_url = (
             f"https://api.apify.com/v2/datasets/{dataset_id}/items?token={token}"
         )
-        results = requests.get(results_url).json()
+        results = requests.get(results_url, timeout=15).json()
 
         all_news_text = []
         if results and isinstance(results, list):
