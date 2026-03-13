@@ -67,6 +67,15 @@ from services.memory_engine import get_memory_context, save_session_memory
 from services.toonify import optimize_text
 from services.maintenance import run_self_audit
 from services.presentation import generate_presentation
+from services.local_rag import local_rag
+from services.skill_manager import inject_skills, record_skill_outcome, seed_skills_from_rules
+from services.post_mortem import analyze_failure, quick_reflect
+from services.firecrawl_service import firecrawl_service
+from services.social_service import SocialService
+from services.pinchtab_service import get_pinchtab_service
+
+social_service = SocialService(rag_service=local_rag)
+pinchtab_service = get_pinchtab_service()
 
 
 async def handle_task(task):
@@ -101,16 +110,36 @@ async def handle_task(task):
             memory_ctx = await get_memory_context()
             
             from core.config import TOONIFY_ENABLED
-            system_prompt = f"{soul_content}\n\n[Memory Context]\n{memory_ctx}"
+            
+            # --- Local RAG Search ---
+            log(f"🔍 執行本地 RAG 檢索: {message[:30]}...")
+            rag_hits = await local_rag.search(message, top_k=3)
+            rag_context = ""
+            if rag_hits:
+                rag_context = "\n[Local Knowledge Search Results]\n"
+                for hit in rag_hits:
+                    rag_context += f"- {hit['metadata'].get('text', '')}\n"
+            
+            # --- Dynamic Skill Injection (MetaClaw-inspired) ---
+            skill_context = await inject_skills(message, task_type="ask")
+            
+            system_prompt = f"{soul_content}\n\n[Memory Context]\n{memory_ctx}{rag_context}{skill_context}"
             
             if TOONIFY_ENABLED:
                 system_prompt = optimize_text(system_prompt)
                 
-            from core.config import ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
-            if ANTHROPIC_API_KEY or OPENAI_API_KEY or GEMINI_API_KEY:
-                log(f"🧠 正在使用 API 引擎 (Headless) 處理: {message[:30]}...")
-                ai_result = await get_ai_response_async(message, system_prompt=system_prompt)
-                response = ai_result["text"]
+                from core.config import ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
+                if ANTHROPIC_API_KEY or OPENAI_API_KEY or GEMINI_API_KEY:
+                    log(f"🧠 正在使用 API 引擎 (Headless) 處理: {message[:30]}...")
+                    ai_result = await get_ai_response_async(message, system_prompt=system_prompt)
+                    response = ai_result["text"]
+                    tokens = ai_result.get("tokens", 0)
+                model_name = ai_result.get("model_name", "unknown")
+                
+                # --- 記錄效能指標 ---
+                latency = int((time.time() - context["start_time"]) * 1000)
+                await log_metrics("ask", tokens, latency, "success", model_name)
+                
                 send_discord_msg(channel_id, f"🤖 **(API Mode)** {response}")
 
                 # --- Voice Output Integration ---
@@ -125,30 +154,134 @@ async def handle_task(task):
                         "command": f"python -c \"import discord; from discord.ext import commands; # simplified trigger\"",
                         "task_name": "Voice Playback",
                         "channel_id": channel_id,
-                        # However, the simplest way is to have the bot check for voice in its own event loop or via a shared state.
-                        # For this implementation, we'll assume the 'speak' command is the primary entry point for now,
-                        # or we can add a specific 'voice_response' task type.
-                    })
+                    }, priority="high")
                     # BETTER: For now, let's just make sure the 'ask' command in commands.py 
                     # can trigger voice if the bot is in a VC.
                 
                  # --- Memory Engine 儲存 Session 摘要 ---
                 await save_session_memory([message], response)
+
+                # --- Autonomous Routing: Detect BRAVO_BROWSE trigger ---
+                if "BRAVO_BROWSE:" in response:
+                    import re as _re
+                    # 更加強健的正則表達式，支援選擇性引號與 Markdown 代碼塊
+                    browse_match = _re.search(r'BRAVO_BROWSE:\s*["\']?(.*?)["\']?$', response, _re.MULTILINE)
+                    if not browse_match:
+                         # 嘗試非結尾匹配
+                         browse_match = _re.search(r'BRAVO_BROWSE:\s*["\']?(.*?)["\']?(?:\n|$)', response)
+                    
+                    if browse_match:
+                        browse_task_desc = browse_match.group(1).strip().strip('"').strip("'")
+                        log(f"🤖 Mandy 啟動自主瀏覽任務: {browse_task_desc}")
+                        queue.push_task("web_browse", {
+                            "task": browse_task_desc,
+                            "channel_id": channel_id
+                        }, priority="high")
             else:
                 # 降級方案: 呼叫 CDP 與 Antigravity 互動
                 log(f"🌐 API Key 未設定，降級使用 CDP 注入: {message[:30]}...")
-                await send_to_antigravity(prompt_with_memory, channel_id, author)
+                # 這裡需要 prompt_with_memory
+                prompt_with_memory = f"{system_prompt}\n\nUser: {message}"
+                cdp_res = await send_to_antigravity(prompt_with_memory, channel_id, author)
+                
+                # 記錄 CDP 指標 (ask 任務下的 CDP 降級)
+                if cdp_res is True:
+                     est_tokens = len(prompt_with_memory) // 4
+                     lat = int((time.time() - context["start_time"]) * 1000)
+                     await log_metrics("ask", est_tokens, lat, "success", "Antigravity (CDP)")
             
+        elif task_type == "cdp_ask":
+            # 處理來自 Discord 的直接訊息
+            # 優先嘗試 CDP 注入；若 UI 忙碌則自動降級為 API 引擎回覆
+            message = payload.get("message", "")
+            channel_id = payload.get("channel_id")
+            author = payload.get("author", "User")
+            
+            log(f"🌐 準備透過 CDP 注入訊息: {message[:30]}...")
+            
+            # Phase 1: 嘗試 CDP 注入 (最多 3 次，共 15 秒)
+            CDP_MAX_RETRIES = 3
+            retry_count = 0
+            cdp_success = False
+            
+            # --- Local RAG Search (CDP) ---
+            log(f"🔍 執行本地 RAG 檢索 (CDP): {message[:30]}...")
+            rag_hits = await local_rag.search(message, top_k=3)
+            if rag_hits:
+                rag_context = "\n[參考資料]\n"
+                for hit in rag_hits:
+                    rag_context += f"- {hit['metadata'].get('text', '')}\n"
+                message_with_rag = f"{rag_context}\n請根據以上資料回答：{message}"
+            else:
+                message_with_rag = message
+
+            while retry_count < CDP_MAX_RETRIES:
+                result = await send_to_antigravity(message_with_rag, channel_id, author)
+                
+                if result is True:
+                    cdp_success = True
+                    break
+                elif result == "__BUSY__":
+                    retry_count += 1
+                    log(f"⏳ Antigravity UI 忙碌，等待 5 秒後重試... ({retry_count}/{CDP_MAX_RETRIES})")
+                    await asyncio.sleep(5)
+                else:
+                    # 連線錯誤等嚴重問題，直接跳到降級
+                    break
+            
+            if cdp_success:
+                log("✅ CDP 注入成功")
+                # 估算 Token (輸入 + 系統提示)
+                estimated_tokens = (len(message_with_rag) + 2000) // 4
+                latency = int((time.time() - context["start_time"]) * 1000)
+                await log_metrics("cdp_ask", estimated_tokens, latency, "success", "Antigravity (CDP)")
+            else:
+                # Phase 2: 自動降級為 API 引擎 (Headless Mode)
+                log(f"🔀 [Self-Downgrade] CDP 忙碌/失敗，自動降級為 API 引擎回覆")
+                if channel_id:
+                    send_discord_msg(channel_id, "⏳ Antigravity 忙碌中，改用 API 引擎直接回覆...")
+                
+                try:
+                    from core.config import ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
+                    has_api_key = ANTHROPIC_API_KEY or OPENAI_API_KEY or GEMINI_API_KEY
+                    
+                    if has_api_key:
+                        soul_content = get_soul_content()
+                        memory_ctx = await get_memory_context()
+                        # --- Dynamic Skill Injection (Failover path) ---
+                        skill_context = await inject_skills(message, task_type="cdp_ask")
+                        system_prompt = f"{soul_content}\n\n[Memory Context]\n{memory_ctx}{skill_context}"
+                        
+                        ai_result = await get_ai_response_async(message, system_prompt=system_prompt)
+                        response = ai_result["text"]
+                        tokens = ai_result.get("tokens", 0)
+                        model_name = ai_result.get("model_name", "unknown")
+                        
+                        latency = int((time.time() - context["start_time"]) * 1000)
+                        await log_metrics("cdp_ask", tokens, latency, "success", f"{model_name} (Failover)")
+                        
+                        if channel_id:
+                            send_discord_msg(channel_id, f"🤖 **(API Failover)** {response}")
+                        await save_session_memory([message], response)
+                    else:
+                        log("❌ 無 API Key 可用，無法降級")
+                        if channel_id:
+                            send_discord_msg(channel_id, "❌ Antigravity 忙碌中且無 API Key 可降級，請稍後再試。")
+                except Exception as api_err:
+                    log(f"❌ API 降級處理失敗: {api_err}")
+                    if channel_id:
+                        send_discord_msg(channel_id, f"❌ API 降級失敗: `{api_err}`")
+
         elif task_type == "briefing":
             # 執行晨報生成
             channel_id = payload.get("channel_id")
             params = payload.get("params", {})
             log(f"📰 正在生成網頁版晨報...")
             # 1. 獲取結構化數據
-            data = await asyncio.to_thread(get_briefing_data, **params)
+            data = await get_briefing_data(**params)
             
             # 2. 生成 HTML 檔案
-            html_path = await asyncio.to_thread(generate_briefing_html, data)
+            html_path = await generate_briefing_html(data)
             report_url = f"{REPORTS_BASE_URL}/{os.path.basename(html_path)}"
             
             if channel_id:
@@ -159,6 +292,7 @@ async def handle_task(task):
                 
         elif task_type == "command":
             # 執行系統指令
+            channel_id = payload.get("channel_id")
             command = payload.get("command")
             task_name = payload.get("task_name", "Command Task")
             log(f"🚀 執行指令: {command}")
@@ -226,6 +360,8 @@ async def handle_task(task):
                 cdp_success = await send_to_antigravity(cdp_prompt, channel_id, author)
                 if cdp_success:
                     log("✅ CDP 注入已送出，等待 Antigravity 回覆...")
+                    latency = int((time.time() - context["start_time"]) * 1000)
+                    await log_metrics("presentation", 0, latency, "success", "Antigravity (CDP)")
                 else:
                     log("❌ CDP 注入失敗，改用備用模板...")
                     if channel_id:
@@ -344,10 +480,227 @@ async def handle_task(task):
                 msg = await annotate_chub(doc_id, note)
                 if channel_id:
                     send_discord_msg(channel_id, msg)
-            else:
-                log(f"⚠️ 未知的 Context Hub 動作: {action}")
                 if channel_id:
                     send_discord_msg(channel_id, f"❌ 未知的 Context Hub 動作: {action}")
+
+        elif task_type == "scrape":
+            # Firecrawl 單頁抓取
+            url = payload.get("url", "")
+            channel_id = payload.get("channel_id")
+            inject = payload.get("inject_to_rag", True)
+            log(f"🔥 Firecrawl Scrape 任務: {url}")
+            
+            result = await firecrawl_service.scrape(url, inject_to_rag=inject)
+            
+            if result["status"] == "success":
+                preview = result.get("markdown", "")[:500]
+                msg = (
+                    f"✅ **Scrape 完成**：{result['title']}\n"
+                    f"📄 共 {result.get('char_count', 0):,} 字元已轉為 Markdown"
+                )
+                if inject:
+                    msg += " 並匯入 RAG 知識庫"
+                msg += f"\n\n> {preview}..." if preview else ""
+                if channel_id:
+                    send_discord_msg(channel_id, msg)
+            else:
+                if channel_id:
+                    send_discord_msg(channel_id, f"❌ **Scrape 失敗**：{result.get('message', '未知錯誤')}")
+
+        elif task_type == "site_crawl":
+            # Firecrawl 全站爬取 + RAG 匯入
+            url = payload.get("url", "")
+            channel_id = payload.get("channel_id")
+            max_pages = payload.get("max_pages", 50)
+            include_paths = payload.get("include_paths")
+            exclude_paths = payload.get("exclude_paths")
+            log(f"🔥 Firecrawl 全站爬取任務: {url} (max: {max_pages})")
+            
+            if channel_id:
+                send_discord_msg(channel_id, f"🕷️ **開始全站爬取**：{url}\n最多抓取 {max_pages} 頁，完成後自動匯入知識庫...")
+            
+            result = await firecrawl_service.crawl(
+                url,
+                max_pages=max_pages,
+                include_paths=include_paths,
+                exclude_paths=exclude_paths
+            )
+            
+            if result["status"] == "success":
+                msg = (
+                    f"✅ **全站爬取完成**\n"
+                    f"🌐 網站: {url}\n"
+                    f"📄 爬取頁數: `{result['pages_crawled']}`\n"
+                    f"📚 匯入 RAG 片段數: `{result['pages_injected']}`\n"
+                    f"\n下次提問時 Mandy 就能參考這些知識了！"
+                )
+                if channel_id:
+                    send_discord_msg(channel_id, msg)
+            else:
+                if channel_id:
+                    send_discord_msg(channel_id, f"❌ **爬取失敗**：{result.get('message', '未知錯誤')}")
+
+        elif task_type == "social_search":
+            # Agent-Reach 社群搜尋
+            query = payload.get("query", "")
+            platform = payload.get("platform", "twitter")
+            limit = payload.get("limit", 10)
+            channel_id = payload.get("channel_id")
+            
+            log(f"🔥 Social Search 任務: {platform} - {query}")
+            result = await social_service.search(query, platform=platform, limit=limit)
+            
+            if result["status"] == "success":
+                items = result.get("results", [])
+                if not items:
+                    msg = f"🔎 **{platform.capitalize()} 搜尋結果**: 查無內容 ({query})"
+                else:
+                    msg = f"🔎 **{platform.capitalize()} 搜尋結果** (關鍵字: {query}):\n"
+                    for item in items[:5]:  # 只顯示前 5 筆
+                        title = item.get("title", item.get("text", ""))[:100]
+                        url = item.get("url", "")
+                        msg += f"- {title}\n  <{url}>\n"
+                    if len(items) > 5:
+                        msg += f"...以及其他 {len(items)-5} 筆結果。"
+                
+                if channel_id:
+                    send_discord_msg(channel_id, msg)
+            else:
+                if channel_id:
+                    send_discord_msg(channel_id, f"❌ **社群搜尋失敗**：{result.get('message', '未知錯誤')}")
+
+        elif task_type == "social_read":
+            # Agent-Reach 社群內容擷取 + RAG
+            url = payload.get("url", "")
+            channel_id = payload.get("channel_id")
+            inject = payload.get("inject_to_rag", True)
+            
+            log(f"🔥 Social Read 任務: {url}")
+            result = await social_service.read_and_inject(url, inject_to_rag=inject)
+            
+            if result["status"] == "success":
+                msg = (
+                    f"✅ **社群擷取完成**：{result['title']}\n"
+                    f"📄 共 {result.get('char_count', 0):,} 字元已解析"
+                )
+                if inject:
+                    msg += " 並匯入 RAG 知識庫"
+                
+                if channel_id:
+                    send_discord_msg(channel_id, msg)
+            else:
+                if channel_id:
+                    send_discord_msg(channel_id, f"❌ **社群擷取失敗**：{result.get('message', '未知錯誤')}")
+
+        elif task_type == "social_config":
+            # 配置 Agent-Reach (如 Twitter Cookies)
+            platform = payload.get("platform")
+            value = payload.get("value")
+            channel_id = payload.get("channel_id")
+            
+            result = await social_service.configure(platform, value)
+            if result["status"] == "success":
+                if channel_id:
+                    send_discord_msg(channel_id, f"✅ **{platform.capitalize()} 配置成功**！")
+            else:
+                if channel_id:
+                    send_discord_msg(channel_id, f"❌ **配置失敗**：{result.get('message', '未知錯誤')}")
+
+        elif task_type == "strategic":
+            # 任務：大局拆解 (Project Great Planner)
+            log("🎯 [Strategic] 收到大局規劃任務...")
+            from services.planner_engine import planner
+            big_task = payload.get("task", "")
+            channel_id = payload.get("channel_id")
+            
+            if channel_id:
+                from core.discord_utils import send_discord_msg
+                send_discord_msg(channel_id, f"🧠 **正在啟動 Strategic Mode**...\n目標：{big_task[:200]}...")
+                
+            plan = await planner.decompose_task(big_task)
+            if plan and "sub_tasks" in plan:
+                if channel_id:
+                    steps_desc = "\n".join([f"- {s.get('type')}: {s.get('description', '無')}" for s in plan['sub_tasks']])
+                    send_discord_msg(channel_id, f"📋 **規劃完成**：{plan.get('plan_title')}\n拆解步驟：\n{steps_desc}\n\n🚀 開始執行子任務隊列...")
+                
+                for sub in plan["sub_tasks"]:
+                    # 將子任務推回隊列，繼承 channel_id
+                    sub_payload = sub.get("payload", {})
+                    if channel_id and "channel_id" not in sub_payload:
+                        sub_payload["channel_id"] = channel_id
+                        
+                    queue.push_task(sub.get("type"), sub_payload)
+                    log(f"➕ [Strategic] 已加入子任務: {sub.get('type')}")
+            else:
+                if channel_id:
+                    send_discord_msg(channel_id, "❌ **任務拆解失敗**，請檢查日誌或 AI 狀態。")
+
+        elif task_type == "web_browse":
+            # 處理 AI 瀏覽器自主任務 (browser-use)
+            browser_task = payload.get("task")
+            channel_id = payload.get("channel_id")
+            log(f"🌐 啟動 AI 瀏覽器自主任務: {browser_task}")
+            
+            from services.browser_agent import browse_and_summarize
+            result = await browse_and_summarize(browser_task)
+            
+            if result["status"] == "success":
+                summary = result.get("result", "任務完成，但未產出摘要。")
+                if channel_id:
+                    send_discord_msg(channel_id, f"✅ **AI 瀏覽器任務完成**！\n🔍 **任務回報**：\n{summary}")
+                log("✅ AI 瀏覽器任務成功。")
+            else:
+                error_msg = result.get("message", "未知錯誤")
+                if channel_id:
+                    send_discord_msg(channel_id, f"❌ **AI 瀏覽器任務失敗**：\n`{error_msg}`")
+                log(f"❌ AI 瀏覽器任務失敗: {error_msg}")
+
+        # --- PinchTab Tasks ---
+        elif task_type == "pinch_health":
+            channel_id = payload.get("channel_id")
+            res = await pinchtab_service.get_health()
+            if channel_id:
+                status_icon = "🟢" if res.get("status") == "success" else "🔴"
+                msg = f"{status_icon} **PinchTab Health**: {json.dumps(res, indent=2)}"
+                send_discord_msg(channel_id, msg)
+
+        elif task_type == "pinch_browse":
+            url = payload.get("url")
+            channel_id = payload.get("channel_id")
+            log(f"🦀 [PinchTab] Navigating to: {url}")
+            
+            # Use quick_browse for one-off tasks
+            res = await pinchtab_service.quick_browse(url)
+            
+            if res["status"] == "success":
+                text_preview = res.get("text", "")[:1000]
+                msg = (
+                    f"✅ **PinchTab 導航成功**！\n"
+                    f"🌐 URL: {url}\n"
+                    f"🆔 Instance: `{res['instance_id']}` | Tab: `{res['tab_id']}`\n\n"
+                    f"📝 **內容摘要**:\n```\n{text_preview}\n```\n"
+                    f"💡 *此操作已自動屏蔽廣告與無關 DOM，節省 Token 並提升隱身性。*"
+                )
+                if channel_id:
+                    send_discord_msg(channel_id, msg)
+                
+                # Optionally inject to RAG
+                if payload.get("inject_to_rag", True):
+                    await social_service._inject_to_rag(url, f"PinchTab: {url}", res.get("text", ""))
+            else:
+                if channel_id:
+                    send_discord_msg(channel_id, f"❌ **PinchTab 導航失敗**：{res.get('message', '未知錯誤')}")
+
+        elif task_type == "pinch_snapshot":
+            tab_id = payload.get("tab_id")
+            channel_id = payload.get("channel_id")
+            res = await pinchtab_service.get_snapshot(tab_id)
+            if channel_id:
+                if res.get("status") == "success":
+                    snapshot = json.dumps(res.get("snapshot"), indent=2)[:1900]
+                    send_discord_msg(channel_id, f"📸 **PinchTab Snapshot (Accessibility Tree)**:\n```json\n{snapshot}\n```")
+                else:
+                    send_discord_msg(channel_id, f"❌ **快照讀取失敗**: {res.get('message')}")
 
         else:
             log(f"⚠️ 未知的任務類型: {task_type}")
@@ -358,33 +711,146 @@ async def handle_task(task):
         context["status"] = "error"
         latency = int((time.time() - context["start_time"]) * 1000)
         await log_metrics(task_type, context["tokens"], latency, "error")
+        
+        # --- Post-Mortem Evolution (MetaClaw-inspired) ---
+        try:
+            user_msg = payload.get("message", payload.get("task", ""))
+            await analyze_failure(task_type, payload, e, context)
+            await record_skill_outcome(task_type, user_msg, success=False)
+        except Exception as pm_err:
+            log(f"⚠️ [PostMortem] 反思流程異常 (不影響主流程): {pm_err}")
+            # 退而求其次：使用不依賴 AI 的快速反思
+            try:
+                await quick_reflect(task_type, e, payload)
+            except Exception:
+                pass
+        
     else:
         await TaskTraceService.update_trace(task_id, status="COMPLETED")
         context["status"] = "success"
         latency = int((time.time() - context["start_time"]) * 1000)
         await log_metrics(task_type, context["tokens"], latency, "success")
+        
+        # --- Record Skill Effectiveness on Success ---
+        try:
+            user_msg = payload.get("message", payload.get("task", ""))
+            await record_skill_outcome(task_type, user_msg, success=True)
+        except Exception:
+            pass
 
 
-# Concurrency Control
-MAX_CONCURRENT_TASKS = int(os.getenv("MAX_CONCURRENT_TASKS", "5"))
-semaphore = asyncio.Semaphore(MAX_CONCURRENT_TASKS)
+# Concurrency Control Pipelines (Multi-Pipeline Architecture)
+UI_CONCURRENCY = 1 # VS Code UI is strictly sequential
+BROWSER_CONCURRENCY = 2 # Heavy headless browsers
+BG_CONCURRENCY = int(os.getenv("MAX_CONCURRENT_TASKS", "5"))
+
+ui_semaphore = asyncio.Semaphore(UI_CONCURRENCY)
+browser_semaphore = asyncio.Semaphore(BROWSER_CONCURRENCY)
+bg_semaphore = asyncio.Semaphore(BG_CONCURRENCY)
+
+# 管道降級映射表：主管道忙碌時，任務可以降級到替代管道
+# 格式: { task_type: (fallback_task_type, fallback_semaphore, fallback_pipeline_name) }
+PIPELINE_FAILOVER = {
+    "cdp_ask": ("ask", bg_semaphore, "Background"),      # UI 忙 → 降級為 API 引擎
+    "presentation": (None, bg_semaphore, "Background"),   # UI 忙 → 排隊等待 (簡報無法降級)
+    "web_browse": (None, bg_semaphore, "Background"),     # Browser 忙 → 排隊等待
+}
 
 async def worker_task_wrapper(task):
-    """Wrapper to handle a task within a semaphore and catch errors."""
-    log(f"🔥 DEBUG: Entered worker_task_wrapper for task {task.get('type')}")
-    async with semaphore:
-        log(f"🔥 DEBUG: Acquired semaphore for task {task.get('type')}")
+    """Wrapper with pipeline failover: if primary pipeline is busy, route to alternative."""
+    task_type = task.get('type', 'unknown')
+    priority = task.get('priority', 'default')
+    log(f"🔥 DEBUG: Entered worker_task_wrapper for task {task_type} [Priority: {priority}]")
+    
+    # 決定任務所屬的主管道 (Primary Pipeline)
+    if task_type in ["cdp_ask", "presentation"]:
+        primary_semaphore = ui_semaphore
+        pipeline_name = "UI"
+    elif task_type == "web_browse":
+        primary_semaphore = browser_semaphore
+        pipeline_name = "Browser"
+    else:
+        primary_semaphore = bg_semaphore
+        pipeline_name = "Background"
+
+    # 嘗試非阻塞地取得主管道
+    if primary_semaphore.locked():
+        # 主管道忙碌！嘗試降級
+        failover = PIPELINE_FAILOVER.get(task_type)
+        if failover and failover[0]:
+            fallback_type, fallback_sem, fallback_name = failover
+            log(f"🔀 [Failover] {pipeline_name} 管道忙碌中！任務 '{task_type}' 降級為 '{fallback_type}'，轉入 {fallback_name} 管道")
+            task["type"] = fallback_type
+            # 保留原始 payload，handle_task 的 ask 分支會使用 API 引擎處理
+            async with fallback_sem:
+                log(f"🚦 [Pipeline: {fallback_name} (Failover)] Acquired semaphore for task: {fallback_type}")
+                try:
+                    await handle_task(task)
+                except Exception as e:
+                    log(f"💥 Task wrapper caught unhandled error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                finally:
+                    log(f"🚦 [Pipeline: {fallback_name} (Failover)] Released semaphore")
+            return
+        else:
+            log(f"⏳ [Pipeline: {pipeline_name}] 管道忙碌，此任務無法降級，排隊等待中...")
+
+    # 正常路徑：取得主管道 Semaphore (若忙碌則等待)
+    async with primary_semaphore:
+        log(f"🚦 [Pipeline: {pipeline_name}] Acquired semaphore for task: {task_type}")
         try:
-            log(f"🔥 DEBUG: Calling handle_task")
             await handle_task(task)
-            log(f"🔥 DEBUG: handle_task completed")
         except Exception as e:
             log(f"💥 Task wrapper caught unhandled error: {e}")
             import traceback
             traceback.print_exc()
+        finally:
+            log(f"🚦 [Pipeline: {pipeline_name}] Released semaphore for task: {task_type}")
+
+async def heartbeat_loop():
+    """Background task to run maintenance and report health every 15 minutes."""
+    log("💓 [Heartbeat] Aegis Monitoring Started.")
+    while True:
+        try:
+            # 啟動自癒與維護循環
+            await run_self_audit()
+            await asyncio.sleep(900) # 15 minutes
+        except Exception as e:
+            log(f"❌ [Heartbeat] Loop error: {e}")
+            await asyncio.sleep(60)
 
 async def main():
-    log(f"🚀 Worker 已啟動 (併發上限: {MAX_CONCURRENT_TASKS})，正在監聽 Redis 隊列...")
+    log(f"🚀 Worker 已啟動 (管道: UI={UI_CONCURRENCY}, Browser={BROWSER_CONCURRENCY}, BG={BG_CONCURRENCY})，正在監聽 Redis 隊列...")
+    
+    # --- 資料庫初始化 ---
+    from core.database import init_db
+    try:
+        await init_db()
+    except Exception as e:
+        log(f"⚠️ 資料庫初始化失敗: {e}")
+
+    # --- 冷啟動：從 rules/ 載入靜態規則作為技能種子 ---
+    try:
+        await seed_skills_from_rules()
+        log("✅ [SkillManager] 技能庫初始化完成")
+    except Exception as e:
+        log(f"⚠️ [SkillManager] 技能庫初始化失敗 (不阻塞啟動): {e}")
+    
+    # --- 啟動 Aegis 心跳監控 ---
+    asyncio.create_task(heartbeat_loop())
+
+    # --- 啟動 Omni-View API Server & Dashboard ---
+    from services.api_server import start_api_server
+    try:
+        asyncio.create_task(start_api_server(port=8088))
+    except Exception as e:
+        log(f"⚠️ [Omni-View] API Server 啟動失敗: {e}")
+
+    # --- 啟動 Hive Sync 知識同步服務 ---
+    from services.sync_engine import hive_sync_loop
+    asyncio.create_task(hive_sync_loop())
+    
     while True:
         try:
             task = queue.pop_task()

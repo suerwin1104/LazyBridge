@@ -92,7 +92,7 @@ class SchedulerCog(commands.Cog):
         if task.type == "command":
              payload["command"] = task.command
 
-        if queue.push_task(task.type, payload):
+        if queue.push_task(task.type, payload, priority="low"):
             log(f"✅ {task.name} ({task.type}) 已成功推送到隊列。")
         else:
             raise Exception("無法推送到 Redis 隊列")

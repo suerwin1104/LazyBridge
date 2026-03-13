@@ -33,6 +33,8 @@ venv/
 .gemini/
 workspace/
 skills/
+memory/
+reports/
 tmp/
 
 # Local scripts

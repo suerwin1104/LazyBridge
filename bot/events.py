@@ -42,7 +42,32 @@ class BotEvents(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message):
+        import re
+
+        # 如果訊息來自機器人自己，檢查是否帶有 BRAVO_BROWSE 觸發標籤
         if message.author == self.bot.user:
+            if "BRAVO_BROWSE:" in message.content:
+                browse_match = re.search(r'BRAVO_BROWSE:\s*["\']?(.*?)["\']?(?:\n|$)', message.content, re.MULTILINE)
+                if browse_match:
+                    browse_task_desc = browse_match.group(1).strip().strip('"').strip("'")
+                    log(f"🤖 核心攔截: 偵測到 Autonomous Browse 觸發指令 '{browse_task_desc}'")
+                    
+                    # 1. 編輯原訊息，移除醜醜的 BRAVO_BROWSE 標籤給使用者看
+                    clean_content = re.sub(r'BRAVO_BROWSE:\s*["\']?.*?["\']?(?:\n|$)', '', message.content, flags=re.MULTILINE).strip()
+                    try:
+                        await message.edit(content=clean_content)
+                    except Exception as e:
+                        log(f"⚠️ 無法編輯機器人原訊息: {e}")
+                    
+                    # 2. 推送任務至 Redis Queue
+                    from core.queue import queue
+                    if queue.push_task("web_browse", {
+                        "task": browse_task_desc,
+                        "channel_id": str(message.channel.id)
+                    }, priority="default"):
+                        log(f"✅ Web Browse 任務已經成功排隊！")
+                    else:
+                        log(f"❌ 任務排隊失敗！")
             return
 
         preview = message.content[:20].replace("\n", " ")
@@ -50,17 +75,20 @@ class BotEvents(commands.Cog):
 
         # 非 / 開頭的訊息自動轉傳給 Antigravity
         if not message.content.startswith("/"):
-            log(f"📡 自動轉傳為 /ask: {preview}...")
+            log(f"📡 自動轉傳為 cdp_ask 任務: {preview}...")
             await message.channel.send(
-                f"📡 接收並傳送中："
+                f"📡 接收並排隊中："
                 f"**{message.content[:50]}{'...' if len(message.content) > 50 else ''}**"
             )
-            await send_to_antigravity(
-                message.content,
-                str(message.channel.id),
-                str(message.author),
-                ctx=message.channel,
-            )
+            from core.queue import queue
+            if queue.push_task("cdp_ask", {
+                "message": message.content,
+                "channel_id": str(message.channel.id),
+                "author": str(message.author)
+            }, priority="high"):
+                log("✅ cdp_ask 任務已經成功排隊！")
+            else:
+                log("❌ 任務排隊失敗！")
             return
 
         # process_commands 由 Bot 內建 on_message 自動呼叫，此處不需重複呼叫

@@ -13,6 +13,7 @@ from core.database import AsyncSessionLocal
 from models.memory import MemoryEntry
 from core.config import log
 from services.ai_engine import get_ai_response_async
+from services.local_rag import local_rag
 
 async def get_memory_context() -> str:
     """從資料庫取得最近的 Session 與踩坑紀錄，組合為給 AI 的 Prompt 上下文。"""
@@ -59,7 +60,6 @@ async def get_memory_context() -> str:
                 .filter(MemoryEntry.category == "custom", MemoryEntry.title == "todo")
             )
             todo_result = await session.execute(todo_stmt)
-            todo = todo_result.scalar_one_or_none()
             todo = todo_result.scalar_one_or_none()
             if todo:
                 output.append(f"\n[Custom Memory] 待辦事項：\n{todo.content}")
@@ -158,6 +158,9 @@ async def save_session_memory(user_messages: List[str], ai_response: str, tools_
             await session.commit()
             log(f"✅ Session 摘要已存至資料庫: {title}")
             
+            # 將摘要同步至本地 RAG 索引
+            await local_rag.add_documents([content], [{"category": "session", "title": title, "date": date_str}])
+            
     except Exception as e:
         log(f"❌ save_session_memory 異常: {e}")
 
@@ -194,6 +197,9 @@ async def save_custom_memory(title: str, content: str):
                 
             await session.commit()
             log(f"✅ 自訂記憶已儲存: {title}")
+            
+            # 將自訂記憶同步至本地 RAG 索引
+            await local_rag.add_documents([content], [{"category": "custom", "title": title}])
             return True
     except Exception as e:
         log(f"❌ save_custom_memory 異常: {e}")
@@ -230,6 +236,10 @@ async def compact_sessions(days_old: int = 1):
             ai_result = await get_ai_response_async(prompt)
             summary_text = ai_result["text"]
             
+            if not summary_text or summary_text.startswith("Error:") or summary_text.startswith("❌"):
+                log(f"⚠️ [Strategic Compaction] AI 壓縮失敗，保留原始 Session。錯誤: {summary_text[:100]}...")
+                return
+                
             # 儲存壓縮後的 Semantic Lesson
             date_str = datetime.utcnow().strftime("%Y-%m-%d")
             lesson_entry = MemoryEntry(

@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Toonify MCP - 免費開源的 Claude Code Token 優化工具</title>
+    <meta name="description" content="自動減少 30-65% 的 Claude API token 使用量（通常為 50-55%），透過 TOON 格式轉換處理 JSON、CSV 和 YAML 資料。">
+    <meta name="keywords" content="Claude Code, Token 優化, MCP 外掛, TOON 格式, API 成本降低">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://toonify.pcircle.ai/">
+    <meta property="og:title" content="Toonify MCP - 免費開源的 Claude Code Token 優化工具">
+    <meta property="og:description" content="自動減少 30-65% 的 Claude API token 使用量，透過 TOON 格式轉換處理結構化資料。">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://toonify.pcircle.ai/">
+    <meta property="twitter:title" content="Toonify MCP - 免費開源的 Claude Code Token 優化工具">
+    <meta property="twitter:description" content="自動減少 30-65% 的 Claude API token 使用量，透過 TOON 格式轉換處理結構化資料。">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <style>
+        /* 字體設定 */
+        body {
+            font-family: 'IBM Plex Sans', 'Noto Sans TC', sans-serif;
+        }
+
+        .heading-mono {
+            font-family: 'JetBrains Mono', 'Noto Sans TC', monospace;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+        }
+
+        code, pre {
+            font-family: 'JetBrains Mono', 'Noto Sans TC', monospace;
+        }
+
+        /* 深色模式變數 */
+        :root {
+            --bg-primary: #F8FAFC;
+            --bg-secondary: #FFFFFF;
+            --bg-tertiary: #F1F5F9;
+            --text-primary: #1E293B;
+            --text-secondary: #475569;
+            --text-tertiary: #64748B;
+            --border-color: #E2E8F0;
+            --code-bg: #1E293B;
+            --trust-blue: #2563EB;
+            --cta-orange: #F97316;
+            --success-green: #10B981;
+        }
+
+        .dark {
+            --bg-primary: #0F172A;
+            --bg-secondary: #1E293B;
+            --bg-tertiary: #334155;
+            --text-primary: #F8FAFC;
+            --text-secondary: #CBD5E1;
+            --text-tertiary: #94A3B8;
+            --border-color: #334155;
+            --code-bg: #0F172A;
+        }
+
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+
+        /* 漸層文字效果 */
+        .gradient-text {
+            background: linear-gradient(135deg, var(--trust-blue) 0%, #7C3AED 50%, var(--cta-orange) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* 導覽列 */
+        nav {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        nav.scrolled {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        /* 按鈕樣式 */
+        .btn-primary {
+            background: var(--trust-blue);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            border: 2px solid var(--trust-blue);
+        }
+
+        .btn-primary:hover {
+            background: #1D4ED8;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(37, 99, 235, 0.3);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--text-primary);
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            border: 2px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-tertiary);
+            border-color: var(--trust-blue);
+        }
+
+        .btn-cta {
+            background: linear-gradient(135deg, var(--cta-orange) 0%, #DC2626 100%);
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 0.75rem;
+            font-weight: 700;
+            font-size: 1.125rem;
+            transition: all 0.3s ease;
+            border: none;
+        }
+
+        .btn-cta:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 30px rgba(249, 115, 22, 0.4);
+        }
+
+        /* 功能卡片 */
+        .feature-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 1rem;
+            padding: 2rem;
+            transition: all 0.3s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            border-color: var(--trust-blue);
+        }
+
+        /* Bento Box 佈局 */
+        .bento-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            grid-auto-rows: minmax(250px, auto);
+        }
+
+        .bento-large {
+            grid-column: span 2;
+        }
+
+        .bento-tall {
+            grid-row: span 2;
+        }
+
+        @media (max-width: 768px) {
+            .bento-large, .bento-tall {
+                grid-column: span 1;
+                grid-row: span 1;
+            }
+        }
+
+        /* 程式碼區塊 */
+        pre {
+            background: var(--code-bg);
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            overflow-x: auto;
+            border: 1px solid var(--border-color);
+        }
+
+        code {
+            color: #E879F9;
+            font-size: 0.9em;
+        }
+
+        /* 統計數字動畫 */
+        .stat-item {
+            opacity: 0;
+            animation: fadeInUp 0.6s ease forwards;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* 區段 */
+        section {
+            padding: 5rem 0;
+        }
+
+        .section-title {
+            font-size: 3rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        /* 深色模式切換按鈕 */
+        .dark-mode-toggle {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .dark-mode-toggle:hover {
+            background: var(--trust-blue);
+            border-color: var(--trust-blue);
+            transform: rotate(180deg);
+        }
+
+        .dark-mode-toggle svg {
+            width: 24px;
+            height: 24px;
+            color: var(--text-primary);
+        }
+
+        .dark-mode-toggle:hover svg {
+            color: white;
+        }
+
+        /* 閃爍效果 */
+        @keyframes shimmer {
+            0% {
+                background-position: -1000px 0;
+            }
+            100% {
+                background-position: 1000px 0;
+            }
+        }
+
+        .shimmer {
+            background: linear-gradient(
+                90deg,
+                var(--bg-secondary) 0%,
+                var(--bg-tertiary) 50%,
+                var(--bg-secondary) 100%
+            );
+            background-size: 1000px 100%;
+            animation: shimmer 2s infinite;
+        }
+
+        /* 連結樣式 */
+        a {
+            color: var(--trust-blue);
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        a:hover {
+            color: var(--cta-orange);
+        }
+
+        /* 響應式設計 */
+        @media (max-width: 768px) {
+            .section-title {
+                font-size: 2rem;
+            }
+
+            section {
+                padding: 3rem 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 導覽列 -->
+    <nav class="fixed w-full top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center space-x-8">
+                    <a href="#" class="text-2xl font-bold heading-mono gradient-text">Toonify MCP</a>
+                    <div class="hidden md:flex space-x-6">
+                        <a href="#features" class="hover:text-blue-600 transition">功能特色</a>
+                        <a href="#how-it-works" class="hover:text-blue-600 transition">運作原理</a>
+                        <a href="#installation" class="hover:text-blue-600 transition">安裝方式</a>
+                        <a href="#examples" class="hover:text-blue-600 transition">使用範例</a>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button id="darkModeToggle" class="dark-mode-toggle">
+                        <svg class="sun-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                        </svg>
+                        <svg class="moon-icon hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+                        </svg>
+                    </button>
+                    <a href="https://github.com/PCIRCLE-AI/toonify-mcp" target="_blank" class="btn-secondary">
+                        <span class="hidden sm:inline">GitHub</span>
+                        <span class="sm:hidden">📦</span>
+                    </a>
+                    <a href="index.html" class="text-sm" style="color: var(--text-tertiary);">English</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero 區段 -->
+    <section class="pt-32 pb-20 px-4">
+        <div class="max-w-7xl mx-auto text-center">
+            <h1 class="text-5xl md:text-6xl font-bold heading-mono mb-6" style="color: var(--text-primary);">
+                免費且開源<br>
+                <span class="gradient-text">Claude Code 的 Token 優化工具</span>
+            </h1>
+
+            <p class="text-xl md:text-2xl mb-8 max-w-3xl mx-auto" style="color: var(--text-secondary);">
+                透過 TOON 格式轉換，自動減少 JSON、CSV 和 YAML 資料的 Claude API token 使用量 <strong style="color: var(--text-primary);">30-65%</strong>（通常為 50-55%）。
+            </p>
+
+            <div class="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
+                <a href="#installation" class="btn-primary">
+                    立即開始使用
+                </a>
+                <a href="https://github.com/PCIRCLE-AI/toonify-mcp" target="_blank" class="btn-secondary">
+                    查看原始碼
+                </a>
+            </div>
+
+            <!-- 快速統計 -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8 text-center">
+                <div class="stat-item">
+                    <div class="text-4xl font-bold heading-mono gradient-text mb-2">30-65%</div>
+                    <div style="color: var(--text-secondary);">Token 減少</div>
+                </div>
+                <div class="stat-item" style="animation-delay: 0.1s;">
+                    <div class="text-4xl font-bold heading-mono gradient-text mb-2">50-500x</div>
+                    <div style="color: var(--text-secondary);">快取效能</div>
+                </div>
+                <div class="stat-item" style="animation-delay: 0.2s;">
+                    <div class="text-4xl font-bold heading-mono gradient-text mb-2">15+</div>
+                    <div style="color: var(--text-secondary);">支援語言</div>
+                </div>
+                <div class="stat-item" style="animation-delay: 0.3s;">
+                    <div class="text-4xl font-bold heading-mono gradient-text mb-2">100%</div>
+                    <div style="color: var(--text-secondary);">自動化</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 功能特色 (Bento Grid) -->
+    <section id="features" style="background: var(--bg-secondary);">
+        <div class="max-w-7xl mx-auto px-4">
+            <h2 class="section-title heading-mono">
+                為什麼選擇 <span class="gradient-text">Toonify MCP</span>
+            </h2>
+
+            <div class="bento-grid">
+                <!-- 主要功能：自動優化 -->
+                <div class="feature-card bento-large">
+                    <div class="text-3xl mb-4">🎯</div>
+                    <h3 class="text-xl font-bold mb-3 heading-mono">全自動優化</h3>
+                    <p style="color: var(--text-secondary);">PostToolUse hook 會攔截工具結果並自動套用 TOON 格式轉換，完全透明化，無需手動呼叫。</p>
+                    <div class="mt-4 p-3 rounded-lg" style="background: var(--bg-tertiary);">
+                        <code class="text-sm font-mono">claude plugin add toonify-mcp</code>
+                    </div>
+                </div>
+
+                <!-- 增強快取 -->
+                <div class="feature-card">
+                    <div class="text-3xl mb-4">⚡</div>
+                    <h3 class="text-xl font-bold mb-3 heading-mono">增強快取系統</h3>
+                    <p style="color: var(--text-secondary);">LRU 快取搭配 TTL 過期機制，效能提升 50-500 倍（快取命中時約 0.1ms vs 5-50ms）。</p>
+                </div>
+
+                <!-- 多語言支援 -->
+                <div class="feature-card">
+                    <div class="text-3xl mb-4">🌏</div>
+                    <h3 class="text-xl font-bold mb-3 heading-mono">多語言支援</h3>
+                    <p style="color: var(--text-secondary);">精確的 token 計數支援 15+ 種語言，包括繁體中文、簡體中文、日文等。</p>
+                </div>
+
+                <!-- 零設定 -->
+                <div class="feature-card">
+                    <div class="text-3xl mb-4">🔧</div>
+                    <h3 class="text-xl font-bold mb-3 heading-mono">零設定需求</h3>
+                    <p style="color: var(--text-secondary);">開箱即用的合理預設值，無需複雜配置即可開始使用。</p>
+                </div>
+
+                <!-- 雙模式運作 -->
+                <div class="feature-card">
+                    <div class="text-3xl mb-4">🔄</div>
+                    <h3 class="text-xl font-bold mb-3 heading-mono">雙模式運作</h3>
+                    <p style="color: var(--text-secondary);">支援外掛模式（自動）和 MCP 伺服器模式（手動），滿足不同使用需求。</p>
+                </div>
+
+                <!-- 內建統計 -->
+                <div class="feature-card">
+                    <div class="text-3xl mb-4">📊</div>
+                    <h3 class="text-xl font-bold mb-3 heading-mono">內建效能統計</h3>
+                    <p style="color: var(--text-secondary);">即時追蹤 token 節省量與快取效能，了解優化成效。</p>
+                </div>
+
+                <!-- 靜默備援 -->
+                <div class="feature-card">
+                    <div class="text-3xl mb-4">🛡️</div>
+                    <h3 class="text-xl font-bold mb-3 heading-mono">靜默備援機制</h3>
+                    <p style="color: var(--text-secondary);">遇到錯誤時自動降級到原始內容，絕不中斷您的工作流程。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 運作原理 -->
+    <section id="how-it-works">
+        <div class="max-w-7xl mx-auto px-4">
+            <h2 class="section-title heading-mono">
+                <span class="gradient-text">運作原理</span>
+            </h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                <div class="text-center">
+                    <div class="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center text-2xl font-bold heading-mono" style="background: var(--trust-blue); color: white;">1</div>
+                    <h3 class="text-lg font-bold mb-2 heading-mono">讀取檔案</h3>
+                    <p style="color: var(--text-secondary);">Claude Code 呼叫 Read 工具讀取 JSON、CSV 或 YAML 檔案。</p>
+                </div>
+
+                <div class="text-center">
+                    <div class="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center text-2xl font-bold heading-mono" style="background: var(--trust-blue); color: white;">2</div>
+                    <h3 class="text-lg font-bold mb-2 heading-mono">自動攔截</h3>
+                    <p style="color: var(--text-secondary);">PostToolUse hook 自動攔截工具結果。</p>
+                </div>
+
+                <div class="text-center">
+                    <div class="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center text-2xl font-bold heading-mono" style="background: var(--trust-blue); color: white;">3</div>
+                    <h3 class="text-lg font-bold mb-2 heading-mono">格式轉換</h3>
+                    <p style="color: var(--text-secondary);">檢測資料類型並轉換為 TOON 格式。</p>
+                </div>
+
+                <div class="text-center">
+                    <div class="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center text-2xl font-bold heading-mono" style="background: var(--success-green); color: white;">✓</div>
+                    <h3 class="text-lg font-bold mb-2 heading-mono">節省 Token</h3>
+                    <p style="color: var(--text-secondary);">優化後的內容傳送到 Claude API，實現 50-55% 的 token 減少。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 安裝方式 -->
+    <section id="installation" style="background: var(--bg-secondary);">
+        <div class="max-w-7xl mx-auto px-4">
+            <h2 class="section-title heading-mono">
+                <span class="gradient-text">安裝方式</span>
+            </h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <!-- 外掛模式（推薦） -->
+                <div class="feature-card">
+                    <div class="flex items-center mb-4">
+                        <div class="text-3xl mr-3">⭐</div>
+                        <h3 class="text-2xl font-bold heading-mono">外掛模式（推薦）</h3>
+                    </div>
+                    <p class="mb-4" style="color: var(--text-secondary);">自動 token 優化，無需手動呼叫</p>
+                    <pre class="text-sm"><code># 1. 下載專案
+git clone https://github.com/PCIRCLE-AI/toonify-mcp.git
+cd toonify-mcp
+
+# 2. 安裝依賴並建置
+npm install
+npm run build
+
+# 3. 從本機安裝
+npm install -g .
+
+# 4. 新增為外掛（自動模式）
+claude plugin add toonify-mcp
+
+# 5. 驗證安裝
+claude plugin list
+# 應顯示：toonify-mcp ✓</code></pre>
+                </div>
+
+                <!-- MCP 伺服器模式 -->
+                <div class="feature-card">
+                    <div class="flex items-center mb-4">
+                        <div class="text-3xl mr-3">🔧</div>
+                        <h3 class="text-2xl font-bold heading-mono">MCP 伺服器模式</h3>
+                    </div>
+                    <p class="mb-4" style="color: var(--text-secondary);">需要手動控制或使用其他 MCP 客戶端</p>
+                    <pre class="text-sm"><code># 1. 先完成外掛模式安裝，確保 toonify-mcp 可用
+
+# 2. 註冊為 MCP 伺服器
+claude mcp add toonify -- toonify-mcp
+
+# 3. 驗證
+claude mcp list
+# 應顯示：toonify: toonify-mcp - ✓ Connected</code></pre>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 使用範例 -->
+    <section id="examples">
+        <div class="max-w-7xl mx-auto px-4">
+            <h2 class="section-title heading-mono">
+                實際<span class="gradient-text">優化範例</span>
+            </h2>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- 優化前 -->
+                <div>
+                    <div class="flex items-center mb-4">
+                        <h3 class="text-2xl font-bold heading-mono">優化前</h3>
+                        <span class="ml-3 px-3 py-1 text-sm font-bold rounded-full" style="background: #FEE2E2; color: #DC2626;">142 tokens</span>
+                    </div>
+                    <pre class="text-sm"><code>{
+  "products": [
+    {
+      "id": 101,
+      "name": "Laptop Pro",
+      "price": 1299,
+      "category": "Electronics",
+      "inStock": true
+    },
+    {
+      "id": 102,
+      "name": "Magic Mouse",
+      "price": 79,
+      "category": "Accessories",
+      "inStock": false
+    }
+  ]
+}</code></pre>
+                </div>
+
+                <!-- 優化後 -->
+                <div>
+                    <div class="flex items-center mb-4">
+                        <h3 class="text-2xl font-bold heading-mono">優化後</h3>
+                        <span class="ml-3 px-3 py-1 text-sm font-bold rounded-full" style="background: #D1FAE5; color: #059669;">57 tokens (-60%)</span>
+                    </div>
+                    <pre class="text-sm"><code>[TOON-JSON]
+products[2]{id,name,price,category,inStock}:
+  101,Laptop Pro,1299,Electronics,true
+  102,Magic Mouse,79,Accessories,false</code></pre>
+                    <div class="mt-4 p-4 rounded-lg" style="background: var(--bg-secondary); border: 1px solid var(--border-color);">
+                        <p class="text-sm" style="color: var(--text-secondary);">
+                            <strong style="color: var(--success-green);">✓ 在外掛模式下自動套用</strong> - 無需手動呼叫！
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA 區段 -->
+    <section style="background: linear-gradient(135deg, var(--trust-blue) 0%, #7C3AED 50%, var(--cta-orange) 100%); color: white;">
+        <div class="max-w-4xl mx-auto px-4 text-center">
+            <h2 class="text-4xl md:text-5xl font-bold mb-6 heading-mono">
+                準備開始節省 Token 了嗎？
+            </h2>
+            <p class="text-xl mb-8 opacity-90">
+                只需一個指令，立即開始減少 30-65% 的 Claude API 成本
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <a href="#installation" class="btn-cta" style="background: white; color: var(--trust-blue);">
+                    立即安裝
+                </a>
+                <a href="https://github.com/PCIRCLE-AI/toonify-mcp" target="_blank" class="btn-cta" style="background: rgba(255,255,255,0.2); backdrop-filter: blur(10px);">
+                    查看文件
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer style="background: var(--bg-secondary); border-top: 1px solid var(--border-color);">
+        <div class="max-w-7xl mx-auto px-4 py-12">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                <!-- 關於 -->
+                <div>
+                    <h3 class="text-lg font-bold mb-4 heading-mono gradient-text">Toonify MCP</h3>
+                    <p style="color: var(--text-secondary);">
+                        免費開源的 Claude Code token 優化工具，透過 TOON 格式轉換自動減少 API 成本。
+                    </p>
+                </div>
+
+                <!-- 連結 -->
+                <div>
+                    <h4 class="text-lg font-bold mb-4 heading-mono">快速連結</h4>
+                    <ul class="space-y-2">
+                        <li><a href="https://github.com/PCIRCLE-AI/toonify-mcp" target="_blank" class="hover:text-blue-600">GitHub Repository</a></li>
+                        <li><a href="https://github.com/PCIRCLE-AI/toonify-mcp" target="_blank" class="hover:text-blue-600">GitHub Repository</a></li>
+                        <li><a href="https://code.claude.com/docs/mcp" target="_blank" class="hover:text-blue-600">MCP 文件</a></li>
+                        <li><a href="https://github.com/toon-format/toon" target="_blank" class="hover:text-blue-600">TOON 格式</a></li>
+                    </ul>
+                </div>
+
+                <!-- 社群 -->
+                <div>
+                    <h4 class="text-lg font-bold mb-4 heading-mono">社群</h4>
+                    <ul class="space-y-2">
+                        <li><a href="https://github.com/PCIRCLE-AI/toonify-mcp/issues" target="_blank" class="hover:text-blue-600">回報問題</a></li>
+                        <li><a href="https://github.com/PCIRCLE-AI/toonify-mcp/discussions" target="_blank" class="hover:text-blue-600">討論區</a></li>
+                        <li><a href="https://github.com/PCIRCLE-AI/toonify-mcp/blob/main/CONTRIBUTING.md" target="_blank" class="hover:text-blue-600">貢獻指南</a></li>
+                    </ul>
+                </div>
+
+                <!-- PCIRCLE AI -->
+                <div>
+                    <h4 class="text-lg font-bold mb-4 heading-mono">PCIRCLE AI</h4>
+                    <ul class="space-y-2">
+                        <li><a href="https://pcircle.ai" class="hover:text-blue-600">主網站</a></li>
+                        <li><a href="https://github.com/PCIRCLE-AI" class="hover:text-blue-600">GitHub 組織</a></li>
+                        <li><a href="https://ccb.pcircle.ai" class="hover:text-blue-600">Claude Code Buddy</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="mt-8 pt-8 border-t" style="border-color: var(--border-color);">
+                <p class="text-center mb-4" style="color: var(--text-tertiary);">
+                    © 2025 Toonify MCP. MIT License.
+                </p>
+                <p class="text-center mb-4" style="color: var(--text-tertiary);">
+                    <a href="privacy-zh.html" class="hover:text-blue-600 dark:hover:text-blue-400 transition">隱私權政策</a>
+                    <span class="mx-2">•</span>
+                    <a href="terms-zh.html" class="hover:text-blue-600 dark:hover:text-blue-400 transition">服務條款</a>
+                </p>
+                <p class="text-center" style="color: var(--text-tertiary);">
+                    <a href="index.html" class="hover:text-blue-600">English</a> |
+                    <span class="ml-2" style="color: var(--text-primary); font-weight: 600;">繁體中文</span>
+                </p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // 深色模式切換
+        const darkModeToggle = document.getElementById('darkModeToggle');
+        const html = document.documentElement;
+        const sunIcon = darkModeToggle.querySelector('.sun-icon');
+        const moonIcon = darkModeToggle.querySelector('.moon-icon');
+
+        // 檢查 localStorage 中的主題偏好
+        const currentTheme = localStorage.getItem('theme') || 'light';
+        if (currentTheme === 'dark') {
+            html.classList.add('dark');
+            sunIcon.classList.add('hidden');
+            moonIcon.classList.remove('hidden');
+        }
+
+        darkModeToggle.addEventListener('click', () => {
+            html.classList.toggle('dark');
+
+            if (html.classList.contains('dark')) {
+                localStorage.setItem('theme', 'dark');
+                sunIcon.classList.add('hidden');
+                moonIcon.classList.remove('hidden');
+            } else {
+                localStorage.setItem('theme', 'light');
+                sunIcon.classList.remove('hidden');
+                moonIcon.classList.add('hidden');
+            }
+        });
+
+        // 導覽列捲動效果
+        const nav = document.querySelector('nav');
+        let lastScroll = 0;
+
+        window.addEventListener('scroll', () => {
+            const currentScroll = window.pageYOffset;
+
+            if (currentScroll > 100) {
+                nav.classList.add('scrolled');
+            } else {
+                nav.classList.remove('scrolled');
+            }
+
+            lastScroll = currentScroll;
+        });
+
+        // 平滑捲動
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // 統計數字計數動畫
+        const observerOptions = {
+            threshold: 0.5,
+            rootMargin: '0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.animationPlayState = 'running';
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.stat-item').forEach(stat => {
+            stat.style.animationPlayState = 'paused';
+            observer.observe(stat);
+        });
+    </script>
+</body>
+</html>

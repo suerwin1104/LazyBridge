@@ -5,7 +5,9 @@ from core.config import log
 class VoiceService:
     @staticmethod
     async def generate_tts(text, filename="response.mp3"):
-        """Generate TTS audio file using gTTS."""
+        """Generate TTS audio file (目前暫停使用)。"""
+        log("⏸️ VoiceService.generate_tts 目前已暫停使用。")
+        return None
         try:
             reports_dir = os.path.join(os.getcwd(), "reports")
             if not os.path.exists(reports_dir):
@@ -22,7 +24,9 @@ class VoiceService:
 
     @staticmethod
     async def play_voice(voice_client, audio_path):
-        """Play audio file in the voice channel."""
+        """Play audio file (目前暫停使用)。"""
+        log("⏸️ VoiceService.play_voice 目前已暫停使用。")
+        return
         import discord
         if not voice_client or not voice_client.is_connected():
             log("⚠️ 語音客戶端未連線，無法播放。")

@@ -1,0 +1,125 @@
+# Firecrawl Self-Hosted (LazyBridge 專用)
+# 使用預建 Docker Image，無需本地編譯
+# 啟動: docker compose -f docker-compose.firecrawl.yml up -d
+
+name: firecrawl
+
+services:
+  # --- Playwright 渲染服務 (處理 JS 動態頁面) ---
+  playwright-service:
+    image: ghcr.io/firecrawl/playwright-service:latest
+    environment:
+      PORT: 3000
+      MAX_CONCURRENT_PAGES: 5
+    networks:
+      - firecrawl-net
+    cpus: 1.5
+    mem_limit: 2G
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # --- Firecrawl API 主服務 ---
+  firecrawl-api:
+    image: ghcr.io/firecrawl/firecrawl:latest
+    environment:
+      HOST: "0.0.0.0"
+      PORT: 3002
+      REDIS_URL: redis://firecrawl-redis:6379
+      REDIS_RATE_LIMIT_URL: redis://firecrawl-redis:6379
+      PLAYWRIGHT_MICROSERVICE_URL: http://playwright-service:3000/scrape
+      USE_DB_AUTHENTICATION: "false"
+      NUM_WORKERS_PER_QUEUE: 4
+      CRAWL_CONCURRENT_REQUESTS: 5
+      MAX_CONCURRENT_JOBS: 3
+      BROWSER_POOL_SIZE: 3
+      LOGGING_LEVEL: INFO
+      # Postgres (Firecrawl 內部用)
+      POSTGRES_USER: firecrawl
+      POSTGRES_PASSWORD: firecrawl123
+      POSTGRES_DB: firecrawl
+      POSTGRES_HOST: firecrawl-postgres
+      POSTGRES_PORT: 5432
+      # RabbitMQ
+      NUQ_RABBITMQ_URL: amqp://firecrawl-rabbitmq:5672
+      ENV: local
+    depends_on:
+      firecrawl-redis:
+        condition: service_started
+      playwright-service:
+        condition: service_started
+      firecrawl-rabbitmq:
+        condition: service_healthy
+    ports:
+      - "3002:3002"
+    command: node dist/src/harness.js --start-docker
+    networks:
+      - firecrawl-net
+    cpus: 2.0
+    mem_limit: 4G
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # --- Redis (Firecrawl 專用，與 LazyBridge 的 Redis 分開) ---
+  firecrawl-redis:
+    image: redis:alpine
+    networks:
+      - firecrawl-net
+    command: redis-server --bind 0.0.0.0
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # --- RabbitMQ (任務佇列) ---
+  firecrawl-rabbitmq:
+    image: rabbitmq:3-management
+    networks:
+      - firecrawl-net
+    command: rabbitmq-server
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # --- PostgreSQL (Firecrawl 內部用) ---
+  firecrawl-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: firecrawl
+      POSTGRES_PASSWORD: firecrawl123
+      POSTGRES_DB: firecrawl
+    volumes:
+      - firecrawl-pgdata:/var/lib/postgresql/data
+    networks:
+      - firecrawl-net
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+volumes:
+  firecrawl-pgdata:
+
+networks:
+  firecrawl-net:
+    driver: bridge

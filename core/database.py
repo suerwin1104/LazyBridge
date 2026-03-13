@@ -4,6 +4,7 @@
 """
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy.orm import declarative_base
+from contextlib import asynccontextmanager
 
 from core.config import DATABASE_URL, log
 
@@ -19,8 +20,8 @@ from models.metrics import MetricEntry
 # 如果尚未設定 PostgreSQL URL，預設會使用 SQLite 記憶體模式來防呆
 engine_url = DATABASE_URL
 if not engine_url:
-    engine_url = "sqlite+aiosqlite:///:memory:"
-    log("⚠️ 未偵測到 DATABASE_URL，將使用 SQLite 記憶體模式 (重啟後資料遺失)")
+    engine_url = "sqlite+aiosqlite:///scheduler_history.sqlite"
+    log("⚠️ 未偵測到 DATABASE_URL，將使用 SQLite 持久化模式 (scheduler_history.sqlite)")
 
 # 建立 Async Engine
 engine = create_async_engine(
@@ -41,6 +42,7 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
     log("✅ 資料庫表格初始化完成 (SQLAlchemy)")
 
+@asynccontextmanager
 async def get_db_session():
     """回傳資料庫 session (Dependency Injection)。"""
     async with AsyncSessionLocal() as session:

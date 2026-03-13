@@ -168,6 +168,19 @@ async def inject_into_tab(ws, safe_text):
         }};
         const input = findInRoot(document);
         if (!input) return '__NO_INPUT__';
+        
+        try {{
+            const roots = [input.getRootNode(), document];
+            for (let r of roots) {{
+                // 更精確的「正在執行/停止生成」按鈕偵測
+                // 排除一般的 .codicon-close (分頁關閉) 或通用 Cancel 按鈕
+                const stopBtn = r.querySelector(
+                    'button[aria-label*="Stop Generating"], button[aria-label*="Interrupt"], button[aria-label*="停止生成"], button[aria-label*="中斷"], .codicon-stop-circle'
+                );
+                if (stopBtn && !stopBtn.disabled && stopBtn.offsetParent !== null) return '__BUSY__';
+            }}
+        }} catch(e) {{}}
+
         input.focus();
         if (!tryPaste(input)) tryNative(input);
         setTimeout(() => {{
@@ -251,6 +264,9 @@ async def send_to_antigravity(text, channel_id, author_name, ctx=None):
                     if ctx:
                         await ctx.send("❌ CDP 注入失敗 (回傳 None)")
                     return False
+                if "__BUSY__" in str(method):
+                    log("⏳ Antigravity 正在忙碌中 (UI 鎖定)")
+                    return "__BUSY__"
                 if "__NO_INPUT__" in str(method):
                     log("❌ 找不到輸入框 (請確認 Antigravity 的聊天面板已開啟)")
                     if ctx:

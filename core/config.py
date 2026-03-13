@@ -24,11 +24,14 @@ def load_env():
 # 模組載入時立刻讀取 env，確保後續變數正確
 load_env()
 
+# Agent Identity
+IDENTITY = os.getenv("IDENTITY", "Master")
+
 # --- 常數 ---
 CDP_PORT = 9222
 CDP_URL = f"http://127.0.0.1:{CDP_PORT}/json"
-DEFAULT_GUILD_ID = "1209429528632361000"
-BRIEFING_CHANNEL_ID = 1209429529140142104
+DEFAULT_GUILD_ID = os.getenv("DEFAULT_GUILD_ID", "1209429528632361000")
+BRIEFING_CHANNEL_ID = int(os.getenv("BRIEFING_CHANNEL_ID", "1209429529140142104"))
 BRIEFING_TIME = "10:30"
 SCHEDULER_TASKS_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "scheduler_tasks.json")
 SCHEDULER_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "scheduler_history.sqlite")
@@ -57,41 +60,29 @@ _config = None
 
 
 def load_config(path="config.json"):
-    """載入 config.json 並快取結果。"""
+    """載入 config.json 並快取結果，若檔案不存在則回傳空字典。"""
     global _config
     if _config is None:
         config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), path)
-        with open(config_path, "r", encoding="utf-8") as f:
-            _config = json.load(f)
+        if os.path.exists(config_path):
+            with open(config_path, "r", encoding="utf-8") as f:
+                _config = json.load(f)
+        else:
+            _config = {}
     return _config
 
 
 def get_bot_token():
-    load_env()
-    # 優先從環境變數讀取，若無則從 config.json 讀取 (相容性)
-    return os.environ.get("DISCORD_BOT_TOKEN") or load_config()["bot_token"]
+    # 優先從環境變數讀取
+    return os.environ.get("DISCORD_BOT_TOKEN") or load_config().get("bot_token", "")
 
 
 def get_owner_id():
-    load_env()
     return os.environ.get("OWNER_ID") or str(load_config().get("owner_id", ""))
 
 
-# --- 環境變數 ---
-def load_env():
-    """從 .env 檔案載入環境變數（簡易實作，不依賴 python-dotenv）。"""
-    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
-    if os.path.exists(env_path):
-        with open(env_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    key, value = line.split("=", 1)
-                    os.environ.setdefault(key.strip(), value.strip())
-
-
 def get_apify_token():
-    load_env()
+    # load_env() 已在模組最上方執行
     return os.environ.get("APIFY_TOKEN")
 
 

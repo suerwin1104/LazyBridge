@@ -1,6 +1,7 @@
 import asyncio
 import os
 from core.config import log
+from services.local_rag import local_rag
 
 async def run_chub_command(command: str) -> tuple[bool, str]:
     """執行 chub CLI 指令並回傳結果。"""
@@ -44,6 +45,10 @@ async def get_chub(doc_id: str, lang: str = "py") -> tuple[bool, str]:
         from services.memory_engine import save_custom_memory
         # 存入 Memory Engine，讓未來的 AI prompt 能夠擷取到
         await save_custom_memory(title=f"chub-{doc_id}", content=result)
+        
+        # 同時存入本地 RAG 索引
+        await local_rag.add_documents([result], [{"category": "chub", "doc_id": doc_id, "lang": lang}])
+        
         return True, f"✅ **文件已成功抓取並存入 Memory Engine (標題: chub-{doc_id}):**\n\n擷取部分內容預覽:\n```markdown\n{result[:500]}...\n```"
     return False, f"❌ **抓取失敗:**\n```\n{result}\n```"
 

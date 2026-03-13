@@ -1,0 +1,30 @@
+# Source files (compiled to dist/)
+src/
+
+# Test files
+test-mcp-call.sh
+test-mcp.json
+*.test.ts
+tests/
+jest.config.js
+
+# Build artifacts
+*.tgz
+
+# Documentation (session-specific)
+HANDOFF.md
+PUBLISHING.md
+
+# Development
+.git
+.github
+.vscode
+*.swp
+
+# CI/CD
+.gitlab-ci.yml
+.travis.yml
+
+# Hooks directory (separate installation)
+hooks/node_modules
+hooks/package-lock.json

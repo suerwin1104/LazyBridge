@@ -7,7 +7,9 @@ import re
 from datetime import datetime
 from services.google_workspace import fetch_unread_emails, fetch_today_events
 from services.apify_news import get_apify_news
-from core.config import log
+from core.config import log, REPORTS_BASE_URL
+from services.report_service import generate_usage_report
+from services.metrics import get_summary_stats
 
 BRIEFING_HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -136,7 +138,7 @@ BRIEFING_HTML_TEMPLATE = """
 </html>
 """
 
-def get_briefing_data(include_emails=True, include_calendar=True, include_news=True):
+async def get_briefing_data(include_emails=True, include_calendar=True, include_news=True):
     """獲取結構化晨報數據。"""
     today = datetime.now().strftime("%Y-%m-%d")
     data = {
@@ -144,9 +146,31 @@ def get_briefing_data(include_emails=True, include_calendar=True, include_news=T
         "sections": []
     }
 
+    # 0. 系統使用狀態
+    try:
+        # Generate the latest report
+        await generate_usage_report()
+        
+        # Get stats for the text summary
+        stats = await get_summary_stats(days=7)
+        
+        if stats:
+            total_tokens = stats.get("total_tokens", 0)
+            usage_msg = f"⚡ 近7日 Token 消耗: {total_tokens:,}"
+            report_url = f"{REPORTS_BASE_URL}/usage_report.html"
+            data["sections"].append({
+                "title": "系統使用狀態",
+                "icon": "📊",
+                "items": [usage_msg, f"🔗 [查看詳細容量與效能報告]({report_url})"]
+            })
+    except Exception as e:
+        log(f"⚠️ 晨報整合額度報告失敗: {e}")
+
     # 1. 未讀郵件
     if include_emails:
-        emails = fetch_unread_emails(max_results=3)
+        # Google Workspace CLI is sync, run in thread to avoid blocking loop
+        import asyncio
+        emails = await asyncio.to_thread(fetch_unread_emails, max_results=3)
         content = [f"📧 {e['subject']}" for e in emails] if emails else ["今日無未讀郵件"]
         data["sections"].append({
             "title": "未讀郵件",
@@ -156,7 +180,7 @@ def get_briefing_data(include_emails=True, include_calendar=True, include_news=T
 
     # 2. 今日行程
     if include_calendar:
-        events = fetch_today_events()
+        events = await asyncio.to_thread(fetch_today_events)
         content = [f"⏰ {e['time']}: {e['summary']}" for e in events] if events else ["今日無行程"]
         data["sections"].append({
             "title": "今日行程",
@@ -171,7 +195,8 @@ def get_briefing_data(include_emails=True, include_calendar=True, include_news=T
             "全球重點科技新聞": f"{today} 全球 重點 科技 新聞",
             "台灣重點新聞": f"{today} 台灣 重點 新聞"
         }
-        news_text = get_apify_news(categories=categories)
+        # requests is sync, run in thread
+        news_text = await asyncio.to_thread(get_apify_news, categories=categories)
         # 簡單解析新聞文本轉為 items
         news_items = [n.strip() for n in news_text.split('\n') if n.strip() and not n.startswith('**')]
         data["sections"].append({
@@ -182,18 +207,23 @@ def get_briefing_data(include_emails=True, include_calendar=True, include_news=T
 
     return data
 
-def generate_briefing_html(data):
+async def generate_briefing_html(data):
     """生成 HTML 版本的晨報。"""
     sections_html = ""
     for idx, section in enumerate(data["sections"]):
         parsed_items = []
         for item in section["items"]:
             if "http" in item:
-                url_start = item.find("http")
-                prefix = item[:url_start]
-                url = item[url_start:].strip()
-                item_html = f'{prefix}<a href="{url}" target="_blank" style="color: #60A5FA; text-decoration: none; border-bottom: 1px dotted #60A5FA; padding-bottom: 2px;">{url}</a>'
-                parsed_items.append(f'<div class="item">{item_html}</div>')
+                # 簡單支援 markdown 連結解析 [label](url) -> <a href="url">label</a>
+                if "[" in item and "](" in item:
+                    item_html = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2" target="_blank" style="color: #60A5FA; text-decoration: none; border-bottom: 1px dotted #60A5FA;">\1</a>', item)
+                    parsed_items.append(f'<div class="item">{item_html}</div>')
+                else:
+                    url_start = item.find("http")
+                    prefix = item[:url_start]
+                    url = item[url_start:].strip()
+                    item_html = f'{prefix}<a href="{url}" target="_blank" style="color: #60A5FA; text-decoration: none; border-bottom: 1px dotted #60A5FA; padding-bottom: 2px;">{url}</a>'
+                    parsed_items.append(f'<div class="item">{item_html}</div>')
             else:
                 parsed_items.append(f'<div class="item">{item}</div>')
         
@@ -227,12 +257,16 @@ def format_briefing_text(data):
     report_sections.append("\n*新聞彙整已由 AI 即時生成並發送至您的 Discord。*")
     return "\n".join(report_sections)
 
-def get_briefing(include_emails=True, include_calendar=True, include_news=True):
-    """相容舊版的純文字晨報。"""
-    data = get_briefing_data(include_emails, include_calendar, include_news)
+async def get_briefing(include_emails=True, include_calendar=True, include_news=True):
+    """相容舊版的純文字晨報 (改為 async)。"""
+    data = await get_briefing_data(include_emails, include_calendar, include_news)
     return format_briefing_text(data)
 
 if __name__ == "__main__":
-    test_data = get_briefing_data()
-    path = generate_briefing_html(test_data)
-    print(f"Generated HTML briefing at: {path}")
+    import asyncio
+    async def test():
+        test_data = await get_briefing_data()
+        path = await generate_briefing_html(test_data)
+        print(f"Generated HTML briefing at: {path}")
+    
+    asyncio.run(test())

@@ -21,7 +21,7 @@ class MemoryCommands(commands.Cog):
     async def memory_save(self, ctx, *, topic: str = "自動重點"):
         prompt = f"請幫我把剛才或目前的重點儲存起來（對應 memory-engine 的 /save）。主題是：{topic}"
         payload = {"channel_id": str(ctx.channel.id), "author": str(ctx.author), "message": prompt}
-        if queue.push_task("ask", payload):
+        if queue.push_task("ask", payload, priority="high"):
             await ctx.send(f"📥 **請求已送出**：要求 AI 儲存重點記憶 ({topic})")
         else:
             await ctx.send("❌ 隊列發送失敗。")
@@ -30,7 +30,7 @@ class MemoryCommands(commands.Cog):
     async def memory_reload(self, ctx):
         prompt = "請為我重新讀取並整理目前專案的記憶上下文（呼叫 /reload），告訴我目前的進度和方向。"
         payload = {"channel_id": str(ctx.channel.id), "author": str(ctx.author), "message": prompt}
-        if queue.push_task("ask", payload):
+        if queue.push_task("ask", payload, priority="high"):
             await ctx.send("📥 **請求已送出**：要求 AI 重新載入專案記憶")
         else:
             await ctx.send("❌ 隊列發送失敗。")
@@ -39,7 +39,7 @@ class MemoryCommands(commands.Cog):
     async def memory_diary(self, ctx):
         prompt = "請幫我執行 /diary，回顧並總結我們今天的開發/討論內容。"
         payload = {"channel_id": str(ctx.channel.id), "author": str(ctx.author), "message": prompt}
-        if queue.push_task("ask", payload):
+        if queue.push_task("ask", payload, priority="high"):
             await ctx.send("📥 **請求已送出**：要求 AI 產出今日回顧日誌")
         else:
             await ctx.send("❌ 隊列發送失敗。")

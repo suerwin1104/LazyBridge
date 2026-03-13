@@ -26,7 +26,7 @@ def get_ai_response(prompt, system_prompt="You are a helpful assistant."):
     """透過 API 取得 AI 回覆與 Token 使用量。"""
     
     # 預設回傳格式
-    result = {"text": "", "tokens": 0}
+    result = {"text": "", "tokens": 0, "model_name": "unknown"}
 
     if ANTHROPIC_API_KEY:
         try:
@@ -42,6 +42,7 @@ def get_ai_response(prompt, system_prompt="You are a helpful assistant."):
             )
             result["text"] = message.content[0].text
             result["tokens"] = message.usage.input_tokens + message.usage.output_tokens
+            result["model_name"] = "claude-3-5-sonnet"
             return result
         except Exception as e:
             log(f"❌ Anthropic API 呼叫失敗: {e}")
@@ -61,6 +62,7 @@ def get_ai_response(prompt, system_prompt="You are a helpful assistant."):
             )
             result["text"] = response.choices[0].message.content
             result["tokens"] = response.usage.total_tokens
+            result["model_name"] = "gpt-4o"
             return result
         except Exception as e:
             log(f"❌ OpenAI API 呼叫失敗: {e}")
@@ -69,20 +71,27 @@ def get_ai_response(prompt, system_prompt="You are a helpful assistant."):
             
     elif GEMINI_API_KEY:
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=GEMINI_API_KEY)
-            model = genai.GenerativeModel(
-                model_name="gemini-1.5-flash",
-                system_instruction=system_prompt
+            from google import genai
+            from google.genai import types
+            
+            client = genai.Client(api_key=GEMINI_API_KEY)
+            
+            # Using the new google.genai SDK syntax
+            response = client.models.generate_content(
+                model="gemini-1.5-flash",
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt
+                ),
+                contents=prompt
             )
-            response = model.generate_content(prompt)
+            
             result["text"] = response.text
-            # Gemini token counting is via model.count_tokens
-            # For simplicity, we estimate or use response.usage_metadata if available
+            # token counts are directly available in response.usage_metadata
             try:
                 result["tokens"] = response.usage_metadata.total_token_count
             except:
                 result["tokens"] = (len(prompt) + len(response.text)) // 4
+            result["model_name"] = "gemini-1.5-flash"
             return result
         except Exception as e:
             log(f"❌ Gemini API 呼叫失敗: {e}")

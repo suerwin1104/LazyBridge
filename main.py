@@ -19,6 +19,14 @@ async def main():
     await bot.load_extension("bot.scheduler")
     await bot.load_extension("bot.memory_cog")
 
+    # --- 資料庫初始化 ---
+    from core.database import init_db
+    try:
+        log("🗄️ 正在初始化資料庫表格...")
+        await init_db()
+    except Exception as e:
+        log(f"⚠️ 資料庫初始化失敗: {e}")
+
     log("🚀 正在啟動 LazyBridge...")
     await bot.start(get_bot_token())
 
@@ -26,6 +34,4 @@ async def main():
 import sys
 
 if __name__ == "__main__":
-    if sys.platform == 'win32':
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(main())

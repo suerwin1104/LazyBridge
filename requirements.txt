@@ -8,3 +8,13 @@ aiosqlite
 redis
 python-dotenv
 pydantic
+browser-use
+playwright
+langchain-openai
+langchain-anthropic
+langchain-google-genai
+sentence-transformers
+faiss-cpu
+firecrawl-py
+git+https://github.com/xmanrui/Agent-Reach.git
+aiohttp
